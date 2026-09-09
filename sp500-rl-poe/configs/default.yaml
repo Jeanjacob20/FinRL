@@ -1,0 +1,76 @@
+# Default experiment config. Notebooks must read dates from here — never hard-code.
+
+seed: 42
+
+paths:
+  data_dir: data
+  raw_dir: data/raw
+  processed_dir: data/processed
+  results_dir: results
+
+dates:
+  # Inclusive calendar bounds for the raw extract (includes indicator warm-up).
+  start: "2019-01-02"
+  end: "2023-12-29"
+  train_start: "2020-01-02"
+  train_end: "2022-12-30"
+  test_start: "2023-01-03"
+  test_end: "2023-12-29"
+
+universe:
+  # sandbox | full_window | top_n
+  # full_window and top_n are survivorship-biased (fixed ticker set). Report it.
+  rule: sandbox
+  sandbox_tickers:
+    - AAPL
+    - MSFT
+    - JNJ
+    - JPM
+    - XOM
+    - PG
+    - HD
+    - UNH
+    - CAT
+    - DIS
+  top_n: 50
+  # market_cap if the column exists, else average dollar volume
+  top_n_metric: market_cap
+
+missing_days:
+  # drop_ticker | ffill  — never silent
+  policy: drop_ticker
+  ffill_max_gap: 5
+
+features:
+  indicators:
+    - macd
+    - rsi_30
+    - cci_30
+    - dx_30
+  log_return: true
+  rolling_vol_window: 20
+
+column_map: null
+
+adapter: generic
+
+poe:
+  features:
+    - close
+    - high
+    - low
+    - macd
+    - rsi_30
+    - cci_30
+    - dx_30
+  valuation_feature: close
+  time_window: 50
+  normalize_df: by_previous_time
+  comission_fee_model: trf
+  # Placeholder. AllianceBernstein has not supplied a transaction-cost figure.
+  comission_fee_pct: 0.001
+  return_last_action: true
+  initial_amount: 1000000
+  cwd: results
+  new_gym_api: false
+  reward_scaling: 1

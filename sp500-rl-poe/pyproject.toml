@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sp500rl"
+version = "0.1.0"
+description = "Data-agnostic S&P 500 pipeline into FinRL PortfolioOptimizationEnv"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "AllianceBernstein / FinRL research" }]
+dependencies = [
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "numpy>=1.24",
+    "pyyaml>=6",
+    "matplotlib>=3.7",
+    "stockstats>=0.5",
+    "quantstats>=0.0.62",
+    "gym==0.26.2",
+    "gymnasium>=0.29,<1.1",
+    "torch>=2.1",
+    "stable-baselines3>=2.3.0,<3",
+    "torch-geometric>=2.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "jupyter>=1.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Gym has been unmaintained:UserWarning",
+]
