@@ -50,6 +50,33 @@ python examples/ppo_ste_vs_poe_walkthrough.py
 
 That script also shows *PPO-on-POE*: original PPO formulas fed only POE's action and log-return. The advantage already diverges from the summary's `A = 0.87` before Jiang PG removes steps 3–7.
 
+### Keeping the PPO steps on POE
+
+To keep the original seven PPO steps and only change what POE actually requires, use the `"ppo"` agent in this package. It still samples a Gaussian, stores `log_prob`, runs a critic, GAE, the clipped surrogate, critic MSE, and on-policy discard. The POE adapters are:
+
+* flatten `(features, tickers, time_window)` and concatenate the last weights
+* softmax the sampled logits into a cash + assets vector (action dim `n+1`)
+* feed POE's `ln(V_t / V_{t-1})` into GAE so the critic lives in log-return units
+
+```python
+from finrl.agents.portfolio_optimization.models import DRLAgent
+
+model_kwargs = {
+    "lr": 3e-4,
+    "n_steps": 128,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_range": 0.2,  # ratio clip to [0.8, 1.2], same as the summary
+}
+
+policy_kwargs = {"hidden_sizes": (64, 64)}
+
+model = DRLAgent(train_env).get_model("ppo", model_kwargs, policy_kwargs)
+DRLAgent.train_model(model, episodes=5)
+```
+
+Do not pass `"pg"` / EIIE if you want PPO: that path replaces steps 3–7 with Jiang log-wealth gradient ascent.
+
 ### Policy Gradient Algorithm
 
 The class `PolicyGradient` implements the Policy Gradient algorithm used in *Jiang et al* paper. This algorithm is inspired by DDPG (deep deterministic policy gradient), but there are a couple of differences:

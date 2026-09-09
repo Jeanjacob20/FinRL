@@ -64,3 +64,16 @@ python examples/ppo_ste_vs_poe_walkthrough.py
 ```
 
 The walkthrough replays the two-asset PPO asset-allocation summary (`$100`, weights `[0.58, 0.42]`, A +4% / B −3.3%) under original PPO, PPO STE, and PPO POE.
+
+To **keep** those PPO steps on `PortfolioOptimizationEnv` (softmax weights, log-return reward, critic + GAE + clip), train:
+
+```python
+from finrl.agents.portfolio_optimization.models import DRLAgent
+
+model = DRLAgent(train_env).get_model(
+    "ppo",
+    model_kwargs={"n_steps": 128, "clip_range": 0.2, "gamma": 0.99},
+    policy_kwargs={"hidden_sizes": (64, 64)},
+)
+DRLAgent.train_model(model, episodes=5)
+```

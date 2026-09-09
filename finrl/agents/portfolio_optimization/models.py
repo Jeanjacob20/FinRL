@@ -6,17 +6,17 @@ This agent was developed to work with environments like PortfolioOptimizationEnv
 from __future__ import annotations
 
 from .algorithms import PolicyGradient
+from .ppo import PPO
 
-MODELS = {"pg": PolicyGradient}
+MODELS = {"pg": PolicyGradient, "ppo": PPO}
 
 
 class DRLAgent:
     """Implementation for DRL algorithms for portfolio optimization.
 
     Note:
-        During testing, the agent is optimized through online learning.
-        The parameters of the policy is updated repeatedly after a constant
-        period of time. To disable it, set learning rate to 0.
+        Jiang policy gradient ("pg") continues to learn during testing.
+        The PPO agent ("ppo") does not: evaluation is greedy and on-policy.
 
     Attributes:
         env: Gym environment class.
@@ -89,20 +89,20 @@ class DRLAgent:
         learning_rate=None,
         optimizer=None,
     ):
-        """Tests a model in a testing environment.
+        """Evaluates a model.
 
         Args:
             model: Instance of the model.
             test_env: Gym environment to be used in testing.
             policy: Policy architecture to be used. If None, it will use the training
             architecture.
-            online_training_period: Period in which an online training will occur. To
-                disable online learning, use a very big value.
+            online_training_period: Used by Jiang PG only. PPO ignores this and
+            runs a greedy rollout.
             batch_size: Batch size to train neural network. If None, it will use the
-                training batch size.
+            training batch size.
             lr: Policy neural network learning rate. If None, it will use the training
-                learning rate
+            learning rate
             optimizer: Optimizer of neural network. If None, it will use the training
-                optimizer
+            optimizer
         """
         model.test(test_env, policy, online_training_period, learning_rate, optimizer)

@@ -392,6 +392,7 @@ def ppo_on_poe_transition(
             "Same clipped PPO update as the summary, but r is POE log-return.",
             "Because r ≈ 0.009 vs V ∈ {105, 106}, the critic units no longer match.",
             "Advantage sign/magnitude therefore differ from the summary's A=0.87.",
+            "The trainable version of this path is finrl.agents.portfolio_optimization.ppo.PPO.",
         ),
     )
 
