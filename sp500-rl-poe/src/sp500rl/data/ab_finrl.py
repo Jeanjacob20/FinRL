@@ -243,4 +243,4 @@ def load_ticker_list_file(path: str | Path) -> list[str]:
     if tic_c is None:
         tic_c = raw.columns[0]
     names = raw[tic_c].astype(str).str.upper().str.strip()
-    return [n for n in names.tolist() if n and n.lower() != "nan"])
+    return [n for n in names.tolist() if n and n.lower() != "nan"]
