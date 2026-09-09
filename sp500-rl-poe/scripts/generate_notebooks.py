@@ -137,7 +137,11 @@ import matplotlib.pyplot as plt
 from sp500rl.data.pipeline import build_panel_from_file
 from sp500rl.env.make_env import make_poe
 from sp500rl.finrl_bootstrap import import_pg_stack
-from sp500rl.baselines.simple import rollout, rollout_equal_weight, rollout_risk_parity
+from sp500rl.baselines.simple import (
+    rollout_equal_weight,
+    rollout_pg_policy,
+    rollout_risk_parity,
+)
 from sp500rl.eval.metrics import compare_rollouts
 
 processed = ROOT / CFG["paths"]["processed_dir"] / "panel_sandbox.parquet"
@@ -149,7 +153,7 @@ else:
 print("panel", panel.shape, panel["date"].min().date(), "→", panel["date"].max().date())
 print("tickers", sorted(panel["tic"].unique()))
 """),
-        md("PolicyGradient treats `obs` as a tensor and uses the old gym 4-tuple, so `return_last_action=False` and `new_gym_api=False`. Online learning during test is disabled (`learning_rate=0`) for a frozen-policy comparison."),
+        md("PolicyGradient treats `obs` as a tensor and uses the old gym 4-tuple, so `return_last_action=False` and `new_gym_api=False`. Test-window evaluation uses the frozen `train_policy` (no online learning) rolled through a fresh POE copy so TRF costs match the baselines."),
         code("""\
 DRLAgent, EIIE, GPM, PolicyGradient = import_pg_stack()
 print("imported", DRLAgent, EIIE, GPM, PolicyGradient)
@@ -184,29 +188,12 @@ print(f"training EIIE for {EPISODES} episodes, seed={SEED}")
 DRLAgent.train_model(model, episodes=EPISODES)
 """),
         code("""\
-def rollout_trained_pg(model, env):
-    # Frozen policy: learning_rate=0 disables online gradient steps in test().
-    model.test(env, learning_rate=0.0, online_training_period=10**9)
-    return {
-        "dates": list(env._date_memory),
-        "values": np.asarray(env._asset_memory["final"], dtype=float),
-        "returns": np.asarray(env._portfolio_return_memory, dtype=float),
-        "actions": np.asarray(env._actions_memory, dtype=float),
-        "trf_mu": np.asarray(
-            [1.0] * (len(env._asset_memory["final"]) - 1), dtype=float
-        ),
-        "rewards": np.asarray(env._portfolio_reward_memory, dtype=float),
-    }
+test_kw = dict(mode="test", return_last_action=False, new_gym_api=False)
+agent_env = make_poe(panel, CFG, cwd=ROOT / "results" / "eiie_agent", **test_kw)
+eq_env = make_poe(panel, CFG, cwd=ROOT / "results" / "eiie_eq", **test_kw)
+rp_env = make_poe(panel, CFG, cwd=ROOT / "results" / "eiie_rp", **test_kw)
 
-test_kwargs = dict(
-    panel=panel, cfg=CFG, mode="test",
-    return_last_action=False, new_gym_api=False,
-)
-agent_env = make_poe(cwd=ROOT / "results" / "eiie_agent", **test_kwargs)
-eq_env = make_poe(cwd=ROOT / "results" / "eiie_eq", **test_kwargs)
-rp_env = make_poe(cwd=ROOT / "results" / "eiie_rp", **test_kwargs)
-
-agent_roll = rollout_trained_pg(model, agent_env)
+agent_roll = rollout_pg_policy(agent_env, model.train_policy)
 eq_roll = rollout_equal_weight(eq_env)
 rp_roll = rollout_risk_parity(rp_env, panel)
 
@@ -292,13 +279,10 @@ def rollout_sb3(model, env):
         return np.asarray(action, dtype=float)
     return rollout(env, fn)
 
-test_kwargs = dict(
-    panel=panel, cfg=CFG, mode="test",
-    wrap_gymnasium=True, return_last_action=True, new_gym_api=True,
-)
-agent_env = make_poe(cwd=ROOT / "results" / f"sb3_{ALGO.lower()}_agent", **test_kwargs)
-eq_env = make_poe(cwd=ROOT / "results" / f"sb3_{ALGO.lower()}_eq", **test_kwargs)
-rp_env = make_poe(cwd=ROOT / "results" / f"sb3_{ALGO.lower()}_rp", **test_kwargs)
+test_kw = dict(mode="test", wrap_gymnasium=True, return_last_action=True, new_gym_api=True)
+agent_env = make_poe(panel, CFG, cwd=ROOT / "results" / f"sb3_{ALGO.lower()}_agent", **test_kw)
+eq_env = make_poe(panel, CFG, cwd=ROOT / "results" / f"sb3_{ALGO.lower()}_eq", **test_kw)
+rp_env = make_poe(panel, CFG, cwd=ROOT / "results" / f"sb3_{ALGO.lower()}_rp", **test_kw)
 
 agent_roll = rollout_sb3(model, agent_env)
 eq_roll = rollout_equal_weight(eq_env)

@@ -5,6 +5,7 @@ from sp500rl.baselines.simple import (
     rollout,
     rollout_buy_and_hold,
     rollout_equal_weight,
+    rollout_pg_policy,
     rollout_risk_parity,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "rollout",
     "rollout_buy_and_hold",
     "rollout_equal_weight",
+    "rollout_pg_policy",
     "rollout_risk_parity",
 ]

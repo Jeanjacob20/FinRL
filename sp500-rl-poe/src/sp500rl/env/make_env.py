@@ -91,6 +91,12 @@ def make_poe(
         normalize = None
 
     PortfolioOptimizationEnv = import_poe()
+    try:
+        import quantstats as qs
+
+        qs.plots.snapshot = lambda *args, **kwargs: None
+    except Exception:
+        pass
     env = PortfolioOptimizationEnv(
         df=sliced,
         initial_amount=float(poe_cfg.get("initial_amount", 1_000_000)),

@@ -77,6 +77,24 @@ def _unpack_step(env, action) -> tuple[Any, float, bool, dict]:
     return obs, float(reward), bool(done), info
 
 
+def rollout_pg_policy(env, policy) -> dict[str, Any]:
+    """Roll a FinRL EIIE-style ``policy(obs_batch, last_action_batch)``.
+
+    ``last_action`` tracks submitted weights (cash-first), matching PolicyGradient's PVM.
+    """
+
+    last = {"w": np.array([1.0] + [0.0] * env.portfolio_size, dtype=np.float64)}
+
+    def fn(obs, info, t):
+        obs_b = np.expand_dims(np.asarray(obs), axis=0)
+        last_b = np.expand_dims(last["w"], axis=0)
+        action = np.asarray(policy(obs_b, last_b), dtype=np.float64).reshape(-1)
+        last["w"] = action
+        return action
+
+    return rollout(env, fn)
+
+
 def rollout(env, action_fn: Callable[[Any, dict, int], np.ndarray]) -> dict[str, Any]:
     """Step ``env`` until done.
 
