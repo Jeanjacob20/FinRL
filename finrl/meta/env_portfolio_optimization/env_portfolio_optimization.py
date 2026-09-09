@@ -287,6 +287,8 @@ class PortfolioOptimizationEnv(gym.Env):
             actions = np.array(actions, dtype=np.float32)
 
             # if necessary, normalize weights
+            # POE change vs original PPO: sampled actions that are not already a
+            # simplex portfolio vector are softmax-normalised (cash + assets).
             if math.isclose(np.sum(actions), 1, abs_tol=1e-6) and np.min(actions) >= 0:
                 weights = actions
             else:
@@ -361,6 +363,9 @@ class PortfolioOptimizationEnv(gym.Env):
             self._portfolio_reward_memory.append(portfolio_reward)
 
             # Define portfolio return
+            # POE change vs original PPO: reward is log-return ln(V_t/V_{t-1}),
+            # not percent return or dollar PnL. This is the r that would enter
+            # advantage A = r + γV(s') - V(s) if a PPO critic were used.
             self._reward = portfolio_reward
             self._reward = self._reward * self._reward_scaling
 

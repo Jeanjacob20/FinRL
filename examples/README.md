@@ -54,3 +54,13 @@ python examples/FinRL_StockTrading_2026_3_Backtest.py
 ```
 
 This script loads the trained agents, runs them on the trading data, and compares their performance against two baselines: Mean Variance Optimization (MVO) and the DJIA index. Results are printed to the console and a plot is saved as `backtest_result.png`.
+
+### PPO STE vs PPO POE
+
+The stock-trading tutorial above is original PPO on `StockTradingEnv` (PPO STE). To see where `PortfolioOptimizationEnv` (POE) changes that algorithm — action simplex, log-return reward, and Jiang PG dropping critic / advantage / clipping — run:
+
+```bash
+python examples/ppo_ste_vs_poe_walkthrough.py
+```
+
+The walkthrough replays the two-asset PPO asset-allocation summary (`$100`, weights `[0.58, 0.42]`, A +4% / B −3.3%) under original PPO, PPO STE, and PPO POE.
