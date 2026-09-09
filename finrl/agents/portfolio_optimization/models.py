@@ -5,10 +5,10 @@ This agent was developed to work with environments like PortfolioOptimizationEnv
 
 from __future__ import annotations
 
-from .algorithms import PolicyGradient
-from .ppo import PPO
-
-MODELS = {"pg": PolicyGradient, "ppo": PPO}
+MODELS = {
+    "pg": "finrl.agents.portfolio_optimization.algorithms.PolicyGradient",
+    "ppo": "finrl.agents.portfolio_optimization.ppo.PPO",
+}
 
 
 class DRLAgent:
@@ -53,7 +53,11 @@ class DRLAgent:
         if model_name not in MODELS:
             raise NotImplementedError("The model requested was not implemented.")
 
-        model = MODELS[model_name]
+        # Import on demand so PPO does not require EIIE / torch-geometric.
+        module_path, class_name = MODELS[model_name].rsplit(".", 1)
+        import importlib
+
+        model = getattr(importlib.import_module(module_path), class_name)
         model_kwargs = {} if model_kwargs is None else model_kwargs
         policy_kwargs = {} if policy_kwargs is None else policy_kwargs
 

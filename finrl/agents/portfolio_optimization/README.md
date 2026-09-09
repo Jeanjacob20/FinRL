@@ -75,6 +75,14 @@ model = DRLAgent(train_env).get_model("ppo", model_kwargs, policy_kwargs)
 DRLAgent.train_model(model, episodes=5)
 ```
 
+The 10-ticker Brazilian portfolio from `FinRL_PortfolioOptimizationEnv_Demo.ipynb` is wired to this PPO agent in:
+
+```bash
+python examples/ppo_poe_10ticker_sandbox.py --episodes 3
+```
+
+and in the notebook `examples/FinRL_PortfolioOptimizationEnv_PPO_Demo.ipynb`.
+
 Do not pass `"pg"` / EIIE if you want PPO: that path replaces steps 3–7 with Jiang log-wealth gradient ascent.
 
 ### Policy Gradient Algorithm

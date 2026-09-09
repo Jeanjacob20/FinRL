@@ -28,6 +28,7 @@ import torch
 from torch import nn
 from torch.distributions import Normal
 from torch.optim import AdamW
+from tqdm import tqdm
 
 
 def unpack_reset(env):
@@ -303,7 +304,7 @@ class PPO:
     def train(self, episodes=100):
         """Collect on-policy rollouts in POE and apply the seven PPO steps."""
 
-        for _ in range(episodes):
+        for episode in tqdm(range(1, episodes + 1)):
             obs = unpack_reset(self.env)
             last_action = self._initial_weights()
             done = False
@@ -322,6 +323,14 @@ class PPO:
                 last_action = weights
                 self._maybe_update(obs, last_action, done)
             self._maybe_update(obs, last_action, True, force=True)
+            if self.last_update:
+                tqdm.write(
+                    "episode {0}: actor_loss={1:.4f} critic_loss={2:.4f}".format(
+                        episode,
+                        self.last_update["actor_loss"],
+                        self.last_update["critic_loss"],
+                    )
+                )
             if self.validation_env is not None:
                 self.test(self.validation_env)
 
