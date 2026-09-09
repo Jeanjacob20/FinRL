@@ -1,25 +1,22 @@
 """Fixed-universe selection on a canonical price frame.
 
 POE requires the *same ticker set on every date* (balanced panel). That
-conflicts with a point-in-time S&P 500. Every rule below is therefore
-survivorship-biased except the explicit sandbox list. Report the bias.
+conflicts with a point-in-time S&P 500. Every rule below except a named list
+is therefore survivorship-biased. Report the bias.
 
 Rules (config ``universe.rule``)
 --------------------------------
-sandbox
-    Hand-picked liquid names across sectors (``universe.sandbox_tickers``).
-ab_finrl
-    The 10 names selected in AB_finRL. Resolution order: sidecar CSV
-    (``paths.ab_finrl_tickers``), a ``selected`` flag on ``wrds_tickers``,
-    then ``universe.ab_finrl_tickers``.
+<name of a list in ``universe.lists``>
+    Fixed tickers, e.g. ``ab_finrl`` (the 10 names selected in AB_finRL) or
+    ``sandbox``.
 full_window
     Tickers present on **every** date in ``[start, end]``.
 top_n
     Top-N by ``market_cap`` on the first training date if that column exists,
     else top-N by average dollar volume over the window. Held fixed after that.
-wrds_tickers
-    Names listed in the AB_finRL ``wrds_tickers`` file that also appear in the
-    price frame, then the full-window survivors. Survivorship-biased.
+listed
+    Names in the dataset's ``tickers`` file that also appear in the price
+    frame, then the full-window survivors.
 
 Input
 -----
@@ -33,12 +30,11 @@ The same columns, filtered to the chosen tickers. Shape ``(M, >=7)``, ``M <= N``
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import pandas as pd
 
-# 10-name sandbox selected in AB_finRL (liquid names across GICS sectors).
+# The 10 names selected in AB_finRL. Also the fallback when YAML has no lists.
 AB_FINRL_TICKERS: tuple[str, ...] = (
     "AAPL",
     "MSFT",
@@ -53,6 +49,8 @@ AB_FINRL_TICKERS: tuple[str, ...] = (
 )
 DEFAULT_SANDBOX_TICKERS: tuple[str, ...] = AB_FINRL_TICKERS
 
+BUILTIN_RULES: tuple[str, ...] = ("full_window", "top_n", "listed")
+
 
 def _window(df: pd.DataFrame, start: str | None, end: str | None) -> pd.DataFrame:
     out = df
@@ -63,69 +61,28 @@ def _window(df: pd.DataFrame, start: str | None, end: str | None) -> pd.DataFram
     return out
 
 
-def sandbox_tickers(cfg: dict[str, Any] | None = None) -> list[str]:
-    """Return the configured sandbox list (10 names by default)."""
+def ticker_lists(cfg: dict[str, Any] | None) -> dict[str, list[str]]:
+    """Named ticker lists from ``universe.lists`` (upper-cased)."""
 
-    if cfg is None:
-        return list(DEFAULT_SANDBOX_TICKERS)
-    uni = cfg.get("universe", cfg)
-    tickers = uni.get("sandbox_tickers", DEFAULT_SANDBOX_TICKERS)
-    return [str(t).upper() for t in tickers]
-
-
-def _resolve_path(rel: str | Path | None) -> Path | None:
-    if not rel or not isinstance(rel, (str, Path)):
-        return None
-    path = Path(rel)
-    if not path.is_absolute():
-        from sp500rl.config import project_root
-
-        path = project_root() / path
-    return path
+    lists: dict[str, list[str]] = {
+        "ab_finrl": list(AB_FINRL_TICKERS),
+        "sandbox": list(DEFAULT_SANDBOX_TICKERS),
+    }
+    if cfg:
+        raw = cfg.get("universe", {}).get("lists") or {}
+        for name, tickers in raw.items():
+            lists[str(name).lower()] = [str(t).upper() for t in tickers]
+    return lists
 
 
-def ab_finrl_tickers(cfg: dict[str, Any] | None = None) -> list[str]:
-    """Return the 10 tickers selected in AB_finRL.
+def list_tickers(name: str, cfg: dict[str, Any] | None = None) -> list[str]:
+    """Tickers of one named list (``ab_finrl``, ``sandbox``, ...)."""
 
-    Resolution order
-    ----------------
-    1. Sidecar CSV at ``paths.ab_finrl_tickers`` (or ``universe.ab_finrl_tickers_file``)
-       when the file exists.
-    2. Rows flagged ``selected`` (or an alias) in ``wrds_tickers.csv``.
-    3. ``universe.ab_finrl_tickers`` in the YAML config.
-    4. :data:`AB_FINRL_TICKERS`.
-    """
-
-    from sp500rl.data.ab_finrl import flagged_tickers, load_ticker_list_file
-
-    if cfg is None:
-        return list(AB_FINRL_TICKERS)
-
-    uni = cfg.get("universe", {})
-    paths = cfg.get("paths", {})
-
-    sidecar = _resolve_path(uni.get("ab_finrl_tickers_file") or paths.get("ab_finrl_tickers"))
-    if sidecar is not None and sidecar.exists():
-        names = load_ticker_list_file(sidecar)
-        if names:
-            return [str(t).upper() for t in names]
-
-    wrds_path = _resolve_path(paths.get("wrds_tickers", "data/raw/wrds_tickers.csv"))
-    if wrds_path is not None and wrds_path.exists():
-        flagged = flagged_tickers(wrds_path)
-        if flagged:
-            return [str(t).upper() for t in flagged]
-
-    yaml_list = uni.get("ab_finrl_tickers")
-    if yaml_list and not isinstance(yaml_list, (str, Path)):
-        return [str(t).upper() for t in yaml_list]
-
-    bundled = _resolve_path("configs/ab_finrl_tickers.csv")
-    if bundled is not None and bundled.exists():
-        names = load_ticker_list_file(bundled)
-        if names:
-            return [str(t).upper() for t in names]
-    return list(AB_FINRL_TICKERS)
+    lists = ticker_lists(cfg)
+    key = name.lower()
+    if key not in lists:
+        raise KeyError(f"No ticker list {name!r}. Known: {sorted(lists)}")
+    return list(lists[key])
 
 
 def select_full_window(df: pd.DataFrame) -> list[str]:
@@ -185,6 +142,7 @@ def select_universe(
     df: pd.DataFrame,
     cfg: dict[str, Any],
     rule: str | None = None,
+    listed: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Filter a canonical frame to a fixed ticker set.
 
@@ -195,7 +153,10 @@ def select_universe(
     cfg
         Full YAML config (uses ``universe`` and ``dates``).
     rule
-        Override ``cfg['universe']['rule']``.
+        Override ``cfg['universe']['rule']``: a list name, ``full_window``,
+        ``top_n`` or ``listed``.
+    listed
+        Tickers from the dataset's ``tickers`` file; required for ``listed``.
 
     Returns
     -------
@@ -205,15 +166,12 @@ def select_universe(
 
     uni = cfg.get("universe", {})
     dates = cfg.get("dates", {})
-    rule = (rule or uni.get("rule") or "sandbox").lower()
-    start = dates.get("start")
-    end = dates.get("end")
-    scoped = _window(df, start, end)
+    rule = (rule or uni.get("rule") or "ab_finrl").lower()
+    scoped = _window(df, dates.get("start"), dates.get("end"))
+    lists = ticker_lists(cfg)
 
-    if rule == "sandbox":
-        tickers = sandbox_tickers(cfg)
-    elif rule in {"ab_finrl", "ab-finrl", "ab_sandbox"}:
-        tickers = ab_finrl_tickers(cfg)
+    if rule in lists:
+        tickers = lists[rule]
     elif rule in {"full_window", "full-window", "survivors"}:
         tickers = select_full_window(scoped)
     elif rule in {"top_n", "topn", "top-n"}:
@@ -221,35 +179,31 @@ def select_universe(
         metric = str(uni.get("top_n_metric", "market_cap"))
         asof = dates.get("train_start", scoped["date"].min())
         tickers = select_top_n(scoped, n=n, asof=asof, metric=metric)
-    elif rule in {"wrds_tickers", "wrds-tickers"}:
-        from sp500rl.data.ab_finrl import listed_tickers
-
-        tickers_path = uni.get("tickers_file") or cfg.get("paths", {}).get(
-            "wrds_tickers", "data/raw/wrds_tickers.csv"
-        )
-        path = _resolve_path(tickers_path)
-        if path is None:
-            raise ValueError("wrds_tickers rule needs paths.wrds_tickers")
-        listed = set(listed_tickers(path))
-        in_frame = set(scoped["tic"].astype(str).str.upper().unique())
-        survivors = scoped.loc[scoped["tic"].astype(str).str.upper().isin(listed & in_frame)]
+    elif rule in {"listed", "wrds_tickers"}:
+        if listed is None:
+            raise ValueError(
+                "Universe rule 'listed' needs the dataset's tickers file "
+                "(datasets.yaml files.tickers)."
+            )
+        wanted = {str(t).upper() for t in listed}
+        survivors = scoped.loc[scoped["tic"].astype(str).str.upper().isin(wanted)]
         tickers = select_full_window(survivors)
     else:
-        raise ValueError(f"Unknown universe rule {rule!r}")
+        raise ValueError(
+            f"Unknown universe rule {rule!r}. Lists: {sorted(lists)}; rules: {BUILTIN_RULES}"
+        )
 
     tickers_u = {t.upper() for t in tickers}
     out = df.loc[df["tic"].astype(str).str.upper().isin(tickers_u)].copy()
     missing = tickers_u - set(out["tic"].astype(str).str.upper().unique())
-    if missing and rule in {"sandbox", "ab_finrl", "ab-finrl", "ab_sandbox"}:
-        raise ValueError(
-            f"Universe {rule!r} tickers missing from the input file: {sorted(missing)}"
-        )
+    if missing and rule in lists:
+        raise ValueError(f"Universe list {rule!r}: tickers missing from the dataset: {sorted(missing)}")
     if out.empty:
         raise ValueError(f"Universe rule {rule!r} selected no tickers.")
     return out.sort_values(["tic", "date"]).reset_index(drop=True)
 
 
-def list_rules() -> tuple[str, ...]:
-    """Config names accepted by :func:`select_universe`."""
+def list_rules(cfg: dict[str, Any] | None = None) -> tuple[str, ...]:
+    """Names accepted by :func:`select_universe`: the lists plus built-in rules."""
 
-    return ("sandbox", "ab_finrl", "full_window", "top_n", "wrds_tickers")
+    return tuple(sorted(ticker_lists(cfg))) + BUILTIN_RULES

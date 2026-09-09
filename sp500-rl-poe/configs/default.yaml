@@ -2,18 +2,14 @@
 
 seed: 42
 
+# Which dataset (see configs/datasets.yaml) and which universe (below).
+# Switch to `ab_wrds` once the two AB_finRL CSVs are in data/raw/ab_wrds/.
+dataset: synthetic
+
 paths:
-  data_dir: data
   raw_dir: data/raw
   processed_dir: data/processed
   results_dir: results
-  # AB_finRL WRDS extract — drop the CSVs here (gitignored).
-  wrds_tickers: data/raw/wrds_tickers.csv
-  wrds_processed: data/raw/wrds_processed.csv
-  # Optional copy of the 10 names selected in AB_finRL (gitignored). When
-  # missing, YAML ``universe.ab_finrl_tickers`` / configs/ab_finrl_tickers.csv
-  # is used. A ``selected`` flag on wrds_tickers also overrides YAML.
-  ab_finrl_tickers: data/raw/ab_finrl_tickers.csv
 
 dates:
   # Inclusive calendar bounds for the raw extract (includes indicator warm-up).
@@ -25,32 +21,17 @@ dates:
   test_end: "2023-12-29"
 
 universe:
-  # sandbox | ab_finrl | full_window | top_n | wrds_tickers
-  # wrds_tickers = names in wrds_tickers.csv ∩ prices, then full-window survivors.
-  # ab_finrl = the 10 names selected in AB_finRL (sidecar CSV, selected flag, or list below).
-  rule: sandbox
-  sandbox_tickers:
-    - AAPL
-    - MSFT
-    - JNJ
-    - JPM
-    - XOM
-    - PG
-    - HD
-    - UNH
-    - CAT
-    - DIS
-  ab_finrl_tickers:
-    - AAPL
-    - MSFT
-    - JNJ
-    - JPM
-    - XOM
-    - PG
-    - HD
-    - UNH
-    - CAT
-    - DIS
+  # rule = a named list below | full_window | top_n | listed
+  #   named list  : fixed tickers (no bias beyond the list)
+  #   full_window : names present on every date in [start, end]   (survivorship)
+  #   top_n       : top-N by market_cap (else avg dollar volume) on train_start, held fixed
+  #   listed      : names in the dataset's `tickers` file ∩ prices, full-window survivors
+  rule: ab_finrl
+  lists:
+    # The 10 names selected in AB_finRL.
+    ab_finrl: [AAPL, MSFT, JNJ, JPM, XOM, PG, HD, UNH, CAT, DIS]
+    # Scratch list for quick experiments. Edit freely.
+    sandbox: [AAPL, MSFT, JNJ, JPM, XOM, PG, HD, UNH, CAT, DIS]
   top_n: 50
   # market_cap if the column exists, else average dollar volume
   top_n_metric: market_cap
@@ -68,10 +49,6 @@ features:
     - dx_30
   log_return: true
   rolling_vol_window: 20
-
-column_map: null
-
-adapter: wrds_crsp
 
 poe:
   features:

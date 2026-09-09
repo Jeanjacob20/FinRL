@@ -1,18 +1,18 @@
 from __future__ import annotations
 
+from sp500rl.config import load_config
+from sp500rl.data.datasets import build_panel
 from sp500rl.data.features import add_features
-from sp500rl.data.panel import assert_balanced_panel, build_panel
-from sp500rl.data.pipeline import build_panel_from_file
+from sp500rl.data.panel import assert_balanced_panel, build_panel as assemble
 from sp500rl.data.synthetic import make_synthetic_canonical
 from sp500rl.data.universe import select_universe
-from sp500rl.config import load_config
 
 
 def test_panel_balanced_no_nan_sorted():
     raw = make_synthetic_canonical(start="2019-01-02", end="2020-06-30", seed=7)
     cfg = load_config()
     featured = add_features(raw)
-    panel = build_panel(
+    panel = assemble(
         featured,
         feature_cols=list(cfg["poe"]["features"]),
         missing_policy="drop_ticker",
@@ -26,21 +26,16 @@ def test_panel_balanced_no_nan_sorted():
     assert not panel[cfg["poe"]["features"]].isna().any().any()
 
 
-def test_sandbox_universe_filters_to_ten():
+def test_ab_finrl_list_filters_to_ten():
     raw = make_synthetic_canonical(seed=8)
     cfg = load_config()
-    out = select_universe(raw, cfg, rule="sandbox")
+    out = select_universe(raw, cfg, rule="ab_finrl")
     assert out["tic"].nunique() == 10
 
 
-def test_pipeline_synthetic(tmp_path, monkeypatch):
+def test_build_panel_from_canonical_prices():
     cfg = load_config()
-    panel = build_panel_from_file(
-        tmp_path / "does_not_exist.csv",
-        cfg=cfg,
-        adapter="generic",
-        universe="sandbox",
-        use_synthetic=True,
-    )
+    prices = make_synthetic_canonical(seed=9)
+    panel = build_panel(prices, cfg, universe="ab_finrl")
     assert panel["tic"].nunique() == 10
     assert set(["date", "tic", *cfg["poe"]["features"]]).issubset(panel.columns)

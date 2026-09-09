@@ -23,16 +23,6 @@ import pandas as pd
 from sp500rl.data.adapters.wrds_crsp import to_canonical as crsp_to_canonical
 from sp500rl.data.schema import validate
 
-SELECTED_FLAG_ALIASES = (
-    "selected",
-    "sandbox",
-    "in_portfolio",
-    "keep",
-    "ab_sandbox",
-    "is_selected",
-    "chosen",
-)
-
 TICKER_START_ALIASES = (
     "start",
     "start_date",
@@ -201,46 +191,3 @@ def listed_tickers(tickers_path: str | Path) -> list[str]:
     df = load_wrds_tickers(tickers_path)
     return sorted(df["ticker"].astype(str).str.upper().unique().tolist())
 
-
-def _flag_true(value: object) -> bool:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return False
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value != 0
-    return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "selected", "sandbox"}
-
-
-def flagged_tickers(tickers_path: str | Path) -> list[str]:
-    """Tickers marked selected in ``wrds_tickers`` (AB_finRL 10-name subset).
-
-    Looks for a flag column among :data:`SELECTED_FLAG_ALIASES`. Returns an
-    empty list when the file has no such column or no row is flagged.
-    """
-
-    path = Path(tickers_path)
-    if not path.exists():
-        return []
-    raw = pd.read_csv(path)
-    flag_c = _col(raw, *SELECTED_FLAG_ALIASES)
-    tic_c = _col(raw, "ticker", "TICKER", "tic", "symbol")
-    if flag_c is None or tic_c is None:
-        return []
-    mask = raw[flag_c].map(_flag_true)
-    names = raw.loc[mask, tic_c].astype(str).str.upper().tolist()
-    return sorted(set(n for n in names if n and n.lower() != "nan"))
-
-
-def load_ticker_list_file(path: str | Path) -> list[str]:
-    """Load a one-column or ``ticker``-column CSV/txt of symbols."""
-
-    path = Path(path)
-    raw = pd.read_csv(path)
-    if raw.empty:
-        return []
-    tic_c = _col(raw, "ticker", "TICKER", "tic", "symbol")
-    if tic_c is None:
-        tic_c = raw.columns[0]
-    names = raw[tic_c].astype(str).str.upper().str.strip()
-    return [n for n in names.tolist() if n and n.lower() != "nan"]

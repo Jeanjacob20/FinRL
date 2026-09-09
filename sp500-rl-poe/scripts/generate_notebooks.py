@@ -26,7 +26,9 @@ from sp500rl.seed import set_seed
 
 CFG = load_config(ROOT / "configs" / "default.yaml")
 SEED = set_seed(int(CFG["seed"]))
-print(f"seed={SEED}")
+DATASET = CFG["dataset"]            # configs/datasets.yaml entry (synthetic | ab_wrds | yahoo | ...)
+UNIVERSE = CFG["universe"]["rule"]  # ab_finrl | sandbox | full_window | top_n | listed
+print(f"seed={SEED} dataset={DATASET} universe={UNIVERSE}")
 print("train", CFG["dates"]["train_start"], "→", CFG["dates"]["train_end"])
 print("test ", CFG["dates"]["test_start"], "→", CFG["dates"]["test_end"])
 """
@@ -54,87 +56,58 @@ def write(name: str, cells: list) -> None:
 
 def nb00() -> None:
     cells = [
-        md("# 00 — Data pipeline check\n\nLoad a raw CSV through the loader + adapter, show the validation report, build the POE panel, and prove the same interface works on a Yahoo-format file."),
+        md("# 00 — Data: what / how / where / use\n\nEvery dataset is one entry in `configs/datasets.yaml`. This notebook walks the four questions and ends with a POE-ready panel."),
         code(PREAMBLE),
-        md("## Canonical CSV (synthetic if needed)"),
+        md("## 1. What datasets exist?"),
         code("""\
-from sp500rl.data.loaders import load_csv
-from sp500rl.data.pipeline import build_panel_from_file
-from sp500rl.data.schema import validate
-from sp500rl.data.synthetic import write_synthetic
-from sp500rl.data.panel import assert_balanced_panel
+from sp500rl.data import list_datasets, status, fetch, load_prices, get_panel, DatasetNotReady
 
-raw_dir = ROOT / CFG["paths"]["raw_dir"]
-raw_dir.mkdir(parents=True, exist_ok=True)
-canonical_path = raw_dir / "synthetic_canonical.csv"
-if not canonical_path.exists():
-    write_synthetic(raw_dir, start=CFG["dates"]["start"], end=CFG["dates"]["end"], seed=SEED)
-    print("wrote synthetic CSVs under", raw_dir)
-
-prices = load_csv(canonical_path, adapter="generic")
-report = validate(prices)
-print(report.summary())
-print("tickers", sorted(prices["tic"].unique()))
-print("date range", prices["date"].min().date(), "→", prices["date"].max().date())
-print("shape", prices.shape)
+for ds in list_datasets():
+    print(f"{ds.name:<10} how={ds.how:<9} format={ds.format:<9} {ds.what}")
 """),
-        md("## Panel + price plot"),
+        md("## 2. Where do the files go, and are they there?"),
+        code("""\
+for name, info in status().items():
+    print(name, "ready" if info["ready"] else "MISSING")
+    for role, f in info["files"].items():
+        print("   ", "ok " if f["exists"] else "-- ", role, f["path"])
+"""),
+        md("## 3. How do I retrieve one?\n\n`fetch` generates / downloads when it can. A manual dataset (the AB_finRL extract) raises with the instruction and the exact paths."),
+        code("""\
+written = fetch(DATASET, CFG)
+print("files:", {k: str(v) for k, v in written.items()})
+
+try:
+    fetch("ab_wrds", CFG)
+except DatasetNotReady as exc:
+    print(exc)
+"""),
+        md("## 4. Where do I use it?\n\n`load_prices` → canonical `date, tic, open, high, low, close, volume`. `get_panel` → universe → features → balanced POE panel, cached in `data/processed/<dataset>__<universe>.parquet`."),
         code("""\
 import matplotlib.pyplot as plt
+from sp500rl.data.schema import validate
+from sp500rl.data.panel import assert_balanced_panel
 
-panel = build_panel_from_file(canonical_path, cfg=CFG, adapter="generic", universe="sandbox")
+prices = load_prices(DATASET, CFG)
+print(validate(prices).summary())
+print("tickers", sorted(prices["tic"].unique()))
+
+panel = get_panel(DATASET, UNIVERSE, CFG, refresh=True)
 assert_balanced_panel(panel, feature_cols=CFG["poe"]["features"])
-print("panel shape", panel.shape)
-print("panel dates", panel["date"].min().date(), "→", panel["date"].max().date())
-print("tickers", sorted(panel["tic"].unique()))
+print("panel", panel.shape, panel["date"].min().date(), "→", panel["date"].max().date())
 
 pivot = panel.pivot(index="date", columns="tic", values="close")
-ax = pivot.iloc[:, :4].plot(figsize=(10, 4), title="Synthetic close (first 4 tickers)")
+ax = pivot.iloc[:, :4].plot(figsize=(10, 4), title=f"{DATASET} close (first 4 tickers)")
 ax.set_ylabel("close")
 plt.tight_layout()
 plt.show()
-
-processed = ROOT / CFG["paths"]["processed_dir"]
-processed.mkdir(parents=True, exist_ok=True)
-out = processed / "panel_sandbox.parquet"
-panel.to_parquet(out, index=False)
-print("wrote", out)
 """),
-        md("## Same interface, Yahoo-format CSV"),
+        md("## Same code, other datasets\n\nSwitch `dataset:` in `configs/default.yaml` (or pass a name). Below: the AB_finRL-shaped path with fake files so it runs before the real CSVs exist."),
         code("""\
-yahoo_path = raw_dir / "synthetic_yahoo.csv"
-yahoo_prices = load_csv(yahoo_path, adapter="yahoo")
-print(validate(yahoo_prices).summary())
-yahoo_panel = build_panel_from_file(yahoo_path, cfg=CFG, adapter="yahoo", universe="sandbox")
-assert_balanced_panel(yahoo_panel, feature_cols=CFG["poe"]["features"])
-print("yahoo panel shape", yahoo_panel.shape, "tickers", sorted(yahoo_panel["tic"].unique()))
-assert set(yahoo_panel["tic"].unique()) == set(panel["tic"].unique())
-print("Yahoo-format path matches canonical ticker set.")
-"""),
-        md("## Native AB_finRL extract (`wrds_tickers` + `wrds_processed`)"),
-        code("""\
-from sp500rl.data.ab_finrl import load_ab_extract, load_wrds_tickers
-from sp500rl.data.universe import ab_finrl_tickers
-
-tickers_path = raw_dir / "wrds_tickers.csv"
-processed_path = raw_dir / "wrds_processed.csv"
-if not tickers_path.exists() or not processed_path.exists():
-    write_synthetic(raw_dir, start=CFG["dates"]["start"], end=CFG["dates"]["end"], seed=SEED)
-    print("wrote AB-shaped wrds_tickers / wrds_processed under", raw_dir)
-print("wrds_tickers exists", tickers_path.exists(), "wrds_processed exists", processed_path.exists())
-print("AB_finRL selected 10", ab_finrl_tickers(CFG))
-if tickers_path.exists():
-    names = load_wrds_tickers(tickers_path)
-    print("universe permnos", names["permno"].nunique(), "tickers", sorted(names["ticker"].unique())[:12], "...")
-ab_prices = load_ab_extract(processed_path, tickers_path)
-print(validate(ab_prices).summary())
-ab_panel = build_panel_from_file(
-    processed_path, cfg=CFG, universe="ab_finrl", tickers_path=tickers_path
-)
-assert_balanced_panel(ab_panel, feature_cols=CFG["poe"]["features"])
-print("AB panel", ab_panel.shape, sorted(ab_panel["tic"].unique()))
-assert set(ab_panel["tic"].str.upper()) == set(ab_finrl_tickers(CFG))
-print("AB_finRL wrds_processed path matches the 10-name selected universe.")
+fetch("ab_wrds", CFG, fake=True)   # writes CRSP-shaped wrds_processed / wrds_tickers
+ab_panel = get_panel("ab_wrds", "ab_finrl", CFG, refresh=True)
+print("ab_wrds panel", ab_panel.shape, sorted(ab_panel["tic"].unique()))
+assert set(ab_panel["tic"]) == set(panel["tic"])
 """),
     ]
     write("00_data_pipeline_check.ipynb", cells)
@@ -151,7 +124,7 @@ import pandas as pd
 
 def nb01() -> None:
     cells = [
-        md("# 01 — Sandbox 10 stocks, FinRL EIIE / PolicyGradient\n\nTrain on the sandbox universe, evaluate on the test window, plot cumulative value vs equal-weight and risk parity."),
+        md("# 01 — 10 stocks, FinRL EIIE / PolicyGradient\n\nTrain on the configured dataset + universe (AB_finRL 10 names by default), evaluate on the test window, plot cumulative value vs equal-weight and risk parity."),
         code(PREAMBLE),
         code("""\
 from pathlib import Path
@@ -159,7 +132,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from sp500rl.data.pipeline import build_panel_from_file
+from sp500rl.data import get_panel
 from sp500rl.env.make_env import make_poe
 from sp500rl.finrl_bootstrap import import_pg_stack
 from sp500rl.baselines.simple import (
@@ -169,12 +142,7 @@ from sp500rl.baselines.simple import (
 )
 from sp500rl.eval.metrics import compare_rollouts
 
-processed = ROOT / CFG["paths"]["processed_dir"] / "panel_sandbox.parquet"
-if processed.exists():
-    panel = pd.read_parquet(processed)
-    panel["date"] = pd.to_datetime(panel["date"])
-else:
-    panel = build_panel_from_file(None, cfg=CFG, universe="sandbox", use_synthetic=True)
+panel = get_panel(DATASET, UNIVERSE, CFG)
 print("panel", panel.shape, panel["date"].min().date(), "→", panel["date"].max().date())
 print("tickers", sorted(panel["tic"].unique()))
 """),
@@ -245,7 +213,7 @@ plt.show()
 
 def nb_sb3(filename: str, algo: str, title: str) -> None:
     cells = [
-        md(f"# {title}\n\nSame protocol as notebook 01: sandbox universe, YAML dates, custom `(f,n,t)` extractor. Default `MlpPolicy`/`CnnPolicy` are not used."),
+        md(f"# {title}\n\nSame protocol as notebook 01: configured dataset + universe, YAML dates, custom `(f,n,t)` extractor. Default `MlpPolicy`/`CnnPolicy` are not used."),
         code(PREAMBLE),
         code("""\
 import numpy as np
@@ -253,19 +221,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO, SAC
 
-from sp500rl.data.pipeline import build_panel_from_file
+from sp500rl.data import get_panel
 from sp500rl.env.extractors import sb3_policy_kwargs
 from sp500rl.env.make_env import make_poe
 from sp500rl.baselines.simple import rollout, rollout_equal_weight, rollout_risk_parity
 from sp500rl.eval.metrics import compare_rollouts
 
-processed = ROOT / CFG["paths"]["processed_dir"] / "panel_sandbox.parquet"
-if processed.exists():
-    panel = pd.read_parquet(processed)
-    panel["date"] = pd.to_datetime(panel["date"])
-else:
-    panel = build_panel_from_file(None, cfg=CFG, universe="sandbox", use_synthetic=True)
-print("panel", panel.shape)
+panel = get_panel(DATASET, UNIVERSE, CFG)
+print("panel", panel.shape, "tickers", sorted(panel["tic"].unique()))
 """),
         code(f"""\
 ALGO = "{algo}"
@@ -333,29 +296,23 @@ plt.show()
 
 def nb04() -> None:
     cells = [
-        md("# 04 — Full-universe template\n\nParameterised scaffold. No results. Change `UNIVERSE_RULE` and rebuild the panel; dates and seed still come from YAML."),
+        md("# 04 — Full-universe template\n\nParameterised scaffold. No results. Pick a dataset and a universe rule; dates and seed still come from YAML."),
         code(PREAMBLE),
         code("""\
 # Parameters (not dates — dates stay in configs/default.yaml)
-UNIVERSE_RULE = "full_window"  # sandbox | ab_finrl | full_window | top_n | wrds_tickers
-INPUT_CSV = ROOT / CFG["paths"]["raw_dir"] / "synthetic_canonical.csv"
-ADAPTER = CFG.get("adapter", "generic")
-
-print("universe rule", UNIVERSE_RULE)
-print("seed", SEED)
-print("dates", CFG["dates"])
+DATASET = "ab_wrds"          # any name in configs/datasets.yaml
+UNIVERSE_RULE = "full_window"  # ab_finrl | sandbox | full_window | top_n | listed
+print("dataset", DATASET, "universe", UNIVERSE_RULE, "seed", SEED)
 """),
         code("""\
-from sp500rl.data.pipeline import build_panel_from_file
+from sp500rl.data import get_panel, DatasetNotReady
 from sp500rl.env.make_env import make_poe
 
-panel = build_panel_from_file(
-    INPUT_CSV if INPUT_CSV.exists() else None,
-    cfg=CFG,
-    adapter=ADAPTER,
-    universe=UNIVERSE_RULE,
-    use_synthetic=not INPUT_CSV.exists(),
-)
+try:
+    panel = get_panel(DATASET, UNIVERSE_RULE, CFG)
+except DatasetNotReady as exc:
+    print(exc)
+    raise
 print("tickers", sorted(panel["tic"].unique()))
 print("shape", panel.shape)
 
@@ -374,6 +331,6 @@ if __name__ == "__main__":
     NB.mkdir(parents=True, exist_ok=True)
     nb00()
     nb01()
-    nb_sb3("02_sandbox_10_stocks_SB3_PPO.ipynb", "PPO", "02 — Sandbox 10 stocks, SB3 PPO")
-    nb_sb3("03_sandbox_10_stocks_SB3_SAC.ipynb", "SAC", "03 — Sandbox 10 stocks, SB3 SAC")
+    nb_sb3("02_sandbox_10_stocks_SB3_PPO.ipynb", "PPO", "02 — 10 stocks, SB3 PPO")
+    nb_sb3("03_sandbox_10_stocks_SB3_SAC.ipynb", "SAC", "03 — 10 stocks, SB3 SAC")
     nb04()

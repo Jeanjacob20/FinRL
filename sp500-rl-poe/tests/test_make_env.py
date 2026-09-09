@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from sp500rl.config import load_config
-from sp500rl.data.pipeline import build_panel_from_file
+from sp500rl.data.datasets import build_panel
+from sp500rl.data.synthetic import make_synthetic_canonical
 from sp500rl.env.make_env import make_poe
 from sp500rl.finrl_bootstrap import import_pg_stack, import_poe
 
@@ -21,12 +22,7 @@ def test_finrl_poe_and_agents_import():
 
 def test_make_poe_box_and_dict_obs(tmp_path):
     cfg = load_config()
-    panel = build_panel_from_file(
-        tmp_path / "missing.csv",
-        cfg=cfg,
-        universe="sandbox",
-        use_synthetic=True,
-    )
+    panel = build_panel(make_synthetic_canonical(seed=cfg["seed"]), cfg, universe="ab_finrl")
     env_box = make_poe(panel, cfg, mode="test", return_last_action=False, new_gym_api=False)
     obs = env_box.reset()
     assert not isinstance(obs, dict)

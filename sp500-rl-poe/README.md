@@ -34,50 +34,65 @@ pip install git+https://github.com/AI4Finance-Foundation/FinRL.git@2334a5fe6d306
 Import POE via submodules (`sp500rl.finrl_bootstrap`) so `finrl/__init__.py`
 does not pull Alpaca/train. Contract details: [`docs/poe_contract.md`](docs/poe_contract.md).
 
-Copy [`.env.example`](.env.example) to `.env` if you want to override paths.
 There is **no live WRDS client** in this repo.
 
-## WRDS / CRSP data (AB_finRL extract)
+## Data: four questions
 
-This repo does **not** talk to WRDS. The native input is the two CSVs from the
-AB_finRL pipeline. Column contract: [`docs/ab_finrl_contract.md`](docs/ab_finrl_contract.md).
+Every data source is one entry in [`configs/datasets.yaml`](configs/datasets.yaml).
+The entry says what it is, how to get it, where the files go, and how the
+columns are read. Nothing downstream knows which dataset it is looking at.
 
-| File | What it is | Path |
+| Question | Command | Python |
 |---|---|---|
-| `wrds_tickers` | Full ticker / PERMNO universe (S&P 500 membership + names) | `data/raw/wrds_tickers.csv` |
-| `wrds_processed` | Daily CRSP prices after the AB extract | `data/raw/wrds_processed.csv` |
-| `ab_finrl_tickers` | The 10 names selected in AB_finRL | `configs/ab_finrl_tickers.csv` |
+| **What** dataset should I retrieve? | `python scripts/data.py list` | `list_datasets()` |
+| **How** do I retrieve it? | `python scripts/data.py fetch <name>` | `fetch(name)` |
+| **Where** do I place it? | `python scripts/data.py status` | `status()` |
+| **Where** do I use it? | `python scripts/data.py build <name> --universe ab_finrl` | `get_panel(name, universe)` |
 
-```bash
-# After you copy the two CSVs into data/raw/:
-python scripts/build_dataset.py --config configs/default.yaml \
-  --input data/raw/wrds_processed.csv \
-  --tickers data/raw/wrds_tickers.csv \
-  --adapter wrds_crsp \
-  --universe ab_finrl
+`fetch` downloads / generates when it can (`yfinance`, `synthetic`, `command`).
+For a manual dataset it prints the instruction and the exact paths. `build` /
+`get_panel` write `data/processed/<dataset>__<universe>.parquet`, the object
+every notebook hands to POE.
 
-# Same command with no --input: those filenames are the default.
-python scripts/build_dataset.py --config configs/default.yaml --universe ab_finrl
+```python
+from sp500rl.data import get_panel
+panel = get_panel("ab_wrds", universe="ab_finrl")   # POE-ready, cached
 ```
 
-The AB_finRL git repo is not cloned here (and its database was unreadable).
-Place the exported CSVs at the paths above. Real CRSP files stay gitignored.
+Registered datasets:
 
-Without an extract, generate **the same two filenames** in CRSP-shaped columns:
+| Name | What | How | Where (under `sp500-rl-poe/`) | Format |
+|---|---|---|---|---|
+| `ab_wrds` | AB_finRL WRDS/CRSP extract | manual: copy the two CSVs | `data/raw/ab_wrds/wrds_processed.csv`, `data/raw/ab_wrds/wrds_tickers.csv` | `wrds_crsp` |
+| `yahoo` | Yahoo Finance daily OHLCV for the active universe list | `fetch yahoo` (yfinance) | `data/raw/yahoo/prices.csv` | `yahoo` |
+| `synthetic` | Fake GBM prices | `fetch synthetic` | `data/raw/synthetic/prices.csv` | `canonical` |
 
-```bash
-python scripts/make_synthetic.py
-# or
-USE_SYNTHETIC=1 python scripts/build_dataset.py --config configs/default.yaml --universe sandbox
+`configs/default.yaml` has one knob, `dataset:`, that notebooks read. It is
+`synthetic` until the AB CSVs are in place; then set it to `ab_wrds`.
+`data/raw/` is gitignored — real CRSP files never get committed.
+`fetch ab_wrds --fake` writes CRSP-shaped fakes at the AB paths so that path
+can be exercised before the real files arrive. Column contract for the AB
+files: [`docs/ab_finrl_contract.md`](docs/ab_finrl_contract.md).
+
+### Adding a dataset
+
+Add a block to `configs/datasets.yaml`:
+
+```yaml
+  berkeley:
+    what: Daily prices from the Berkeley vendor feed.
+    how: manual                  # or yfinance | synthetic | command (+ command: ...)
+    how_to: Export from ... and save as the path below.
+    files:
+      prices: data/raw/berkeley/prices.csv
+    format: canonical            # canonical | yahoo | wrds_crsp
+    column_map: {Datum: date, Symbol: tic}   # only if the headers are unusual
 ```
 
-That also writes Yahoo-format and wide-format CSVs so notebook `00` can prove
-source-agnosticism. `universe.rule: wrds_tickers` keeps names listed in
-`wrds_tickers.csv` that survive the full window (report the survivorship bias).
-`universe.rule: ab_finrl` keeps the 10 names selected in AB_finRL
-(`AAPL, MSFT, JNJ, JPM, XOM, PG, HD, UNH, CAT, DIS`). Override that list in
-`configs/ab_finrl_tickers.csv`, `universe.ab_finrl_tickers` in YAML, or with a
-`selected` flag on `wrds_tickers.csv`.
+That is the whole change. If the file needs cleaning no `column_map` can
+express, write `src/sp500rl/data/adapters/<name>.py` with
+`to_canonical(df) -> df`, register it in `ADAPTERS`, and use that name as
+`format`.
 
 ## Canonical schema
 
@@ -93,29 +108,29 @@ See [`src/sp500rl/data/schema.py`](src/sp500rl/data/schema.py).
 ## Universe selection (survivorship bias)
 
 POE needs a **fixed ticker set on every date**. That is not a point-in-time
-S&P 500. Config `universe.rule`:
+S&P 500. `universe.rule` in `configs/default.yaml`:
 
 | Rule | Behaviour | Bias |
 |---|---|---|
-| `sandbox` | 10 hand-picked liquid names across sectors (`universe.sandbox_tickers`) | None beyond the list |
-| `ab_finrl` | The 10 names selected in AB_finRL (`configs/ab_finrl_tickers.csv`) | None beyond the list |
+| a name in `universe.lists` (`ab_finrl`, `sandbox`, …) | Fixed tickers. `ab_finrl` = the 10 names selected in AB_finRL: AAPL, MSFT, JNJ, JPM, XOM, PG, HD, UNH, CAT, DIS | None beyond the list |
 | `full_window` | Names present on every date in the window | Survivorship: leavers/joiners dropped |
-| `top_n` | Top-N by `market_cap` on the first training date (else avg dollar volume), then **held fixed** | Look-ahead / survivorship: names are chosen with information from the start of train and never replaced |
-| `wrds_tickers` | Names in `wrds_tickers.csv` ∩ prices, then full-window survivors | Survivorship: leavers/joiners dropped |
+| `top_n` | Top-N by `market_cap` on the first training date (else avg dollar volume), then **held fixed** | Look-ahead / survivorship |
+| `listed` | Names in the dataset's `tickers` file ∩ prices, then full-window survivors | Survivorship |
 
-**This bias must be reported** in any AB comparison of RL vs equal-weight /
-risk parity. It is a property of the POE test bed, not of a particular agent.
+Add a list by adding a key under `universe.lists`. **This bias must be
+reported** in any AB comparison of RL vs equal-weight / risk parity. It is a
+property of the POE test bed, not of a particular agent.
 
 ## Pipeline
 
 ```
-CSV/parquet → loaders (+ column_map) → adapter.to_canonical → validate
+datasets.yaml entry → fetch → loaders (+ column_map) → adapter.to_canonical → validate
   → universe → features (no look-ahead) → balanced panel → POE
 ```
 
 ```bash
-python scripts/build_dataset.py --config configs/default.yaml \
-  --input data/raw/synthetic_yahoo.csv --adapter yahoo --universe sandbox
+python scripts/data.py fetch synthetic
+python scripts/data.py build synthetic --universe ab_finrl
 pytest tests/
 ```
 
@@ -124,30 +139,21 @@ Missing sessions: `missing_days.policy` is `drop_ticker` or `ffill` with
 
 ## Notebooks
 
-From `notebooks/`, with `data/processed/panel_sandbox.parquet` already built
-(or the first cell of `00` will build it). Dates and the seed come from
-`configs/default.yaml` — do not hard-code them.
+From `notebooks/`. Each reads `dataset:`, `universe.rule`, dates and the seed
+from `configs/default.yaml` — do not hard-code them — and gets its panel with
+`get_panel(DATASET, UNIVERSE, CFG)`.
 
 | Notebook | What it does |
 |---|---|
-| `00_data_pipeline_check.ipynb` | Load CSV, validation report, panel plots; second cell loads a Yahoo-format CSV |
+| `00_data_pipeline_check.ipynb` | The four questions live: list, status, fetch, load, panel, plot |
 | `01_sandbox_10_stocks_EIIE.ipynb` | POE + FinRL `PolicyGradient` + `EIIE` vs equal-weight and risk parity |
 | `02_sandbox_10_stocks_SB3_PPO.ipynb` | SB3 PPO + `EIIEFeaturesExtractor` / `MultiInputPolicy` |
 | `03_sandbox_10_stocks_SB3_SAC.ipynb` | Same protocol, SAC |
-| `04_full_universe_template.ipynb` | Parameterised scaffold (rule, dates, seed), no results |
+| `04_full_universe_template.ipynb` | Parameterised scaffold (dataset, rule), no results |
 
 FinRL `PolicyGradient` needs a **Box** observation (`return_last_action=False`,
 old gym 4-tuple). SB3 needs a **Dict** observation (`return_last_action=True`)
 plus the Gymnasium wrapper.
-
-## How to add a data source
-
-1. Write `src/sp500rl/data/adapters/<name>.py` with `to_canonical(df) -> df`.
-2. Register it in `ADAPTERS` inside `src/sp500rl/data/adapters/__init__.py`.
-3. Point `scripts/build_dataset.py --adapter <name>` at your file.
-4. If columns are unusual, pass `column_map` in YAML instead of editing code.
-
-The adapter output must pass `validate`.
 
 ## How to add an agent
 
@@ -168,14 +174,15 @@ supplied a figure.
 
 ```
 sp500-rl-poe/
-├── configs/default.yaml
+├── configs/default.yaml       # dataset:, universe, dates, POE kwargs
+├── configs/datasets.yaml      # what / how / where / format per dataset
 ├── docs/poe_contract.md
-├── src/sp500rl/data/          # schema, loaders, adapters, universe, features, panel
+├── docs/ab_finrl_contract.md
+├── src/sp500rl/data/          # datasets (registry), schema, loaders, adapters, universe, features, panel
 ├── src/sp500rl/env/           # make_poe, Gymnasium wrapper, SB3 extractor
 ├── src/sp500rl/baselines/
 ├── src/sp500rl/eval/
 ├── notebooks/
-├── scripts/build_dataset.py
-├── scripts/make_synthetic.py
+├── scripts/data.py            # list | fetch | status | build
 └── tests/
 ```
