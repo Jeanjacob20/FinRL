@@ -1,7 +1,8 @@
-"""Generate a fake canonical (and Yahoo / wide) price file for offline runs.
+"""Generate fake price files (canonical, Yahoo, wide, or CRSP-shaped).
 
-The synthetic panel has the sandbox ticker list, a business-day calendar, and
-GBM-like prices so notebooks run without a WRDS extract.
+The synthetic panel uses the AB_finRL 10-name list, a business-day calendar,
+and GBM-like prices so tests and notebooks run without a real extract.
+:func:`write_fake` writes a dataset's files in that dataset's ``format``.
 
 Output columns (canonical)
 --------------------------
@@ -12,7 +13,7 @@ Shape ``(n_dates * n_tickers, 8)``.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -121,26 +122,103 @@ def to_wide_close(df: pd.DataFrame) -> pd.DataFrame:
     return wide
 
 
-def write_synthetic(
-    raw_dir: str | Path,
-    start: str = "2019-01-02",
-    end: str = "2023-12-29",
-    seed: int = 42,
-) -> dict[str, Path]:
-    """Write canonical, Yahoo, and wide CSVs under ``raw_dir``.
+def to_wrds_processed(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonical → CRSP daily-file shaped ``wrds_processed``.
 
-    Returns a dict of kind → path.
+    Output columns: ``date, permno, TICKER, prc, openprc, askhi, bidlo, vol,
+    cfacpr, cfacshr``. One synthetic PERMNO per ticker (10000+i). Close is
+    written as ``prc`` (positive).
     """
 
-    raw_dir = Path(raw_dir)
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    canonical = make_synthetic_canonical(start=start, end=end, seed=seed)
-    paths = {
-        "canonical": raw_dir / "synthetic_canonical.csv",
-        "yahoo": raw_dir / "synthetic_yahoo.csv",
-        "wide": raw_dir / "synthetic_wide.csv",
-    }
-    canonical.to_csv(paths["canonical"], index=False)
-    to_yahoo_format(canonical).to_csv(paths["yahoo"], index=False)
-    to_wide_close(canonical).to_csv(paths["wide"], index=False)
-    return paths
+    tics = sorted(df["tic"].astype(str).unique())
+    permno = {tic: 10000 + i for i, tic in enumerate(tics)}
+    out = pd.DataFrame(
+        {
+            "date": df["date"].dt.strftime("%Y-%m-%d"),
+            "permno": df["tic"].astype(str).map(permno),
+            "TICKER": df["tic"],
+            "prc": df["close"],
+            "openprc": df["open"],
+            "askhi": df["high"],
+            "bidlo": df["low"],
+            "vol": df["volume"].astype(int),
+            "cfacpr": 1.0,
+            "cfacshr": 1.0,
+        }
+    )
+    return out
+
+
+def to_wrds_tickers(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonical → ``wrds_tickers`` universe (one row per ticker).
+
+    Output columns: ``permno, ticker, start, ending``.
+    """
+
+    tics = sorted(df["tic"].astype(str).unique())
+    start = df["date"].min()
+    end = df["date"].max()
+    rows = [
+        {
+            "permno": 10000 + i,
+            "ticker": tic,
+            "start": pd.Timestamp(start).strftime("%Y-%m-%d"),
+            "ending": pd.Timestamp(end).strftime("%Y-%m-%d"),
+        }
+        for i, tic in enumerate(tics)
+    ]
+    return pd.DataFrame(rows)
+
+
+
+
+def write_fake(
+    files: Mapping[str, str | Path],
+    fmt: str = "canonical",
+    start: str = "2019-01-02",
+    end: str = "2023-12-29",
+    tickers: Sequence[str] | None = None,
+    seed: int = 42,
+) -> dict[str, Path]:
+    """Write fake files for one dataset entry, in its own column format.
+
+    Parameters
+    ----------
+    files
+        ``{"prices": path, "tickers": path}`` from ``datasets.yaml`` (``tickers``
+        optional). Parent directories are created.
+    fmt
+        ``canonical`` | ``yahoo`` | ``wrds_crsp`` | ``wide``.
+    start, end, tickers, seed
+        Passed to :func:`make_synthetic_canonical`.
+
+    Returns
+    -------
+    dict[str, Path]
+        Role → written path.
+    """
+
+    canonical = make_synthetic_canonical(start=start, end=end, tickers=tickers, seed=seed)
+    fmt = fmt.lower()
+    if fmt in {"canonical", "generic"}:
+        prices = canonical
+    elif fmt == "yahoo":
+        prices = to_yahoo_format(canonical)
+    elif fmt in {"wrds_crsp", "ab_finrl"}:
+        prices = to_wrds_processed(canonical)
+    elif fmt == "wide":
+        prices = to_wide_close(canonical)
+    else:
+        raise ValueError(f"Unknown format {fmt!r} for fake data")
+
+    written: dict[str, Path] = {}
+    prices_path = Path(files["prices"])
+    prices_path.parent.mkdir(parents=True, exist_ok=True)
+    prices.to_csv(prices_path, index=False)
+    written["prices"] = prices_path
+    if files.get("tickers"):
+        tickers_path = Path(files["tickers"])
+        tickers_path.parent.mkdir(parents=True, exist_ok=True)
+        to_wrds_tickers(canonical).to_csv(tickers_path, index=False)
+        written["tickers"] = tickers_path
+    return written

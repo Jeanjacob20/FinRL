@@ -27,6 +27,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "jupyter>=1.0"]
+# `python scripts/data.py fetch yahoo`
+yahoo = ["yfinance>=0.2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

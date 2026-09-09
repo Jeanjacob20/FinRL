@@ -1,0 +1,60 @@
+# Dataset registry. One entry per data source. Each entry answers:
+#
+#   what    - what the dataset is
+#   how     - how it is retrieved: manual | yfinance | synthetic | command
+#   how_to  - the instruction a human follows (shown by `data.py fetch`)
+#   files   - where the files go (relative to sp500-rl-poe/). `prices` is
+#             required; `tickers` is an optional PERMNO<->ticker universe file.
+#   format  - how the columns are read: canonical | yahoo | wrds_crsp
+#   column_map (optional) - source column -> canonical column renames
+#
+# Use them:
+#   python scripts/data.py list                 # what
+#   python scripts/data.py fetch <name>         # how
+#   python scripts/data.py status               # where (present / missing)
+#   python scripts/data.py build <name>         # use  -> data/processed/<name>__<universe>.parquet
+#
+# In Python / notebooks:
+#   from sp500rl.data import get_panel
+#   panel = get_panel("ab_wrds", universe="ab_finrl")
+
+datasets:
+  ab_wrds:
+    what: Daily CRSP OHLCV for the S&P 500 universe, exported by the AB_finRL WRDS pipeline.
+    how: manual
+    how_to: |
+      Run the WRDS export in AB_finRL (or ask for its two CSV outputs) and copy
+      them to the paths below. No WRDS credentials are needed in this repo.
+    files:
+      prices: data/raw/ab_wrds/wrds_processed.csv
+      tickers: data/raw/ab_wrds/wrds_tickers.csv
+    format: wrds_crsp
+
+  yahoo:
+    what: Daily OHLCV from Yahoo Finance for the tickers of the active universe list.
+    how: yfinance
+    how_to: pip install yfinance, then `python scripts/data.py fetch yahoo`.
+    files:
+      prices: data/raw/yahoo/prices.csv
+    format: yahoo
+
+  synthetic:
+    what: Fake GBM prices in canonical columns. Tests and offline notebooks.
+    how: synthetic
+    how_to: Generated locally by `python scripts/data.py fetch synthetic`.
+    files:
+      prices: data/raw/synthetic/prices.csv
+    format: canonical
+
+  # Any other file (Berkeley vendor, hand-built...). Copy this block, rename it,
+  # drop the file at `files.prices`, pick a format, add column_map if needed.
+  # my_source:
+  #   what: ...
+  #   how: manual
+  #   how_to: Download from ... and save as the path below.
+  #   files:
+  #     prices: data/raw/my_source/prices.csv
+  #   format: canonical
+  #   column_map:
+  #     Datum: date
+  #     Symbol: tic
