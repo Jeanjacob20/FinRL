@@ -46,6 +46,7 @@ AB_finRL pipeline. Column contract: [`docs/ab_finrl_contract.md`](docs/ab_finrl_
 |---|---|---|
 | `wrds_tickers` | Full ticker / PERMNO universe (S&P 500 membership + names) | `data/raw/wrds_tickers.csv` |
 | `wrds_processed` | Daily CRSP prices after the AB extract | `data/raw/wrds_processed.csv` |
+| `ab_finrl_tickers` | The 10 names selected in AB_finRL | `configs/ab_finrl_tickers.csv` |
 
 ```bash
 # After you copy the two CSVs into data/raw/:
@@ -53,10 +54,10 @@ python scripts/build_dataset.py --config configs/default.yaml \
   --input data/raw/wrds_processed.csv \
   --tickers data/raw/wrds_tickers.csv \
   --adapter wrds_crsp \
-  --universe sandbox
+  --universe ab_finrl
 
 # Same command with no --input: those filenames are the default.
-python scripts/build_dataset.py --config configs/default.yaml --universe sandbox
+python scripts/build_dataset.py --config configs/default.yaml --universe ab_finrl
 ```
 
 The AB_finRL git repo is not cloned here (and its database was unreadable).
@@ -73,6 +74,10 @@ USE_SYNTHETIC=1 python scripts/build_dataset.py --config configs/default.yaml --
 That also writes Yahoo-format and wide-format CSVs so notebook `00` can prove
 source-agnosticism. `universe.rule: wrds_tickers` keeps names listed in
 `wrds_tickers.csv` that survive the full window (report the survivorship bias).
+`universe.rule: ab_finrl` keeps the 10 names selected in AB_finRL
+(`AAPL, MSFT, JNJ, JPM, XOM, PG, HD, UNH, CAT, DIS`). Override that list in
+`configs/ab_finrl_tickers.csv`, `universe.ab_finrl_tickers` in YAML, or with a
+`selected` flag on `wrds_tickers.csv`.
 
 ## Canonical schema
 
@@ -92,9 +97,11 @@ S&P 500. Config `universe.rule`:
 
 | Rule | Behaviour | Bias |
 |---|---|---|
-| `sandbox` | 10 hand-picked liquid names across sectors | None beyond the list |
+| `sandbox` | 10 hand-picked liquid names across sectors (`universe.sandbox_tickers`) | None beyond the list |
+| `ab_finrl` | The 10 names selected in AB_finRL (`configs/ab_finrl_tickers.csv`) | None beyond the list |
 | `full_window` | Names present on every date in the window | Survivorship: leavers/joiners dropped |
 | `top_n` | Top-N by `market_cap` on the first training date (else avg dollar volume), then **held fixed** | Look-ahead / survivorship: names are chosen with information from the start of train and never replaced |
+| `wrds_tickers` | Names in `wrds_tickers.csv` ∩ prices, then full-window survivors | Survivorship: leavers/joiners dropped |
 
 **This bias must be reported** in any AB comparison of RL vs equal-weight /
 risk parity. It is a property of the POE test bed, not of a particular agent.

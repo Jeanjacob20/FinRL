@@ -74,3 +74,70 @@ def test_universe_rule_wrds_tickers(tmp_path: Path):
     assert set(selected["tic"].str.upper()) <= {"AAPL", "MSFT"}
     featured = add_features(selected)
     assert featured["tic"].nunique() == 2
+
+
+def test_ab_finrl_universe_defaults_to_ten_selected_names():
+    from sp500rl.data.universe import AB_FINRL_TICKERS, list_rules, select_universe
+
+    raw = make_synthetic_canonical(start="2020-01-02", end="2020-06-30", seed=14)
+    cfg = load_config()
+    out = select_universe(raw, cfg, rule="ab_finrl")
+    assert set(out["tic"].str.upper()) == set(AB_FINRL_TICKERS)
+    assert "ab_finrl" in list_rules()
+
+
+def test_ab_finrl_yaml_list_independent_of_sandbox(tmp_path):
+    from sp500rl.data.universe import select_universe
+
+    raw = make_synthetic_canonical(
+        start="2020-01-02",
+        end="2020-03-31",
+        tickers=["AAPL", "MSFT", "JPM", "XOM"],
+        seed=15,
+    )
+    cfg = load_config()
+    cfg["paths"]["ab_finrl_tickers"] = str(tmp_path / "absent.csv")
+    cfg["paths"]["wrds_tickers"] = str(tmp_path / "absent_wrds.csv")
+    cfg["universe"]["sandbox_tickers"] = ["AAPL", "MSFT"]
+    cfg["universe"]["ab_finrl_tickers"] = ["JPM", "XOM"]
+    sandbox = select_universe(raw, cfg, rule="sandbox")
+    ab = select_universe(raw, cfg, rule="ab_finrl")
+    assert set(sandbox["tic"].str.upper()) == {"AAPL", "MSFT"}
+    assert set(ab["tic"].str.upper()) == {"JPM", "XOM"}
+
+
+def test_ab_finrl_sidecar_csv(tmp_path):
+    from sp500rl.data.universe import select_universe
+
+    raw = make_synthetic_canonical(
+        start="2020-01-02",
+        end="2020-03-31",
+        tickers=["AAPL", "MSFT", "JPM", "XOM"],
+        seed=16,
+    )
+    side = tmp_path / "ab_finrl_tickers.csv"
+    pd.DataFrame({"ticker": ["JPM", "XOM"]}).to_csv(side, index=False)
+    cfg = load_config()
+    cfg["paths"]["ab_finrl_tickers"] = str(side)
+    cfg["paths"]["wrds_tickers"] = str(tmp_path / "absent.csv")
+    out = select_universe(raw, cfg, rule="ab_finrl")
+    assert set(out["tic"].str.upper()) == {"JPM", "XOM"}
+
+
+def test_ab_finrl_selected_flag_on_wrds_tickers(tmp_path):
+    from sp500rl.data.universe import select_universe
+
+    canonical = make_synthetic_canonical(
+        start="2020-01-02",
+        end="2020-03-31",
+        tickers=["AAPL", "MSFT", "JPM"],
+        seed=17,
+    )
+    names = to_wrds_tickers(canonical)
+    names["selected"] = names["ticker"].isin(["AAPL", "MSFT"]).astype(int)
+    names.to_csv(tmp_path / "wrds_tickers.csv", index=False)
+    cfg = load_config()
+    cfg["paths"]["ab_finrl_tickers"] = str(tmp_path / "absent.csv")
+    cfg["paths"]["wrds_tickers"] = str(tmp_path / "wrds_tickers.csv")
+    out = select_universe(canonical, cfg, rule="ab_finrl")
+    assert set(out["tic"].str.upper()) == {"AAPL", "MSFT"}

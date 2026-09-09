@@ -151,7 +151,8 @@ def to_wrds_processed(df: pd.DataFrame) -> pd.DataFrame:
 def to_wrds_tickers(df: pd.DataFrame) -> pd.DataFrame:
     """Canonical → ``wrds_tickers`` universe (one row per ticker).
 
-    Output columns: ``permno, ticker, start, ending``.
+    Output columns: ``permno, ticker, start, ending, selected``.
+    ``selected=1`` marks the AB_finRL 10-name sandbox.
     """
 
     tics = sorted(df["tic"].astype(str).unique())
@@ -163,6 +164,7 @@ def to_wrds_tickers(df: pd.DataFrame) -> pd.DataFrame:
             "ticker": tic,
             "start": pd.Timestamp(start).strftime("%Y-%m-%d"),
             "ending": pd.Timestamp(end).strftime("%Y-%m-%d"),
+            "selected": 1,
         }
         for i, tic in enumerate(tics)
     ]
@@ -189,10 +191,14 @@ def write_synthetic(
         "wide": raw_dir / "synthetic_wide.csv",
         "wrds_processed": raw_dir / "wrds_processed.csv",
         "wrds_tickers": raw_dir / "wrds_tickers.csv",
+        "ab_finrl_tickers": raw_dir / "ab_finrl_tickers.csv",
     }
     canonical.to_csv(paths["canonical"], index=False)
     to_yahoo_format(canonical).to_csv(paths["yahoo"], index=False)
     to_wide_close(canonical).to_csv(paths["wide"], index=False)
     to_wrds_processed(canonical).to_csv(paths["wrds_processed"], index=False)
     to_wrds_tickers(canonical).to_csv(paths["wrds_tickers"], index=False)
+    pd.DataFrame({"ticker": list(DEFAULT_SANDBOX_TICKERS)}).to_csv(
+        paths["ab_finrl_tickers"], index=False
+    )
     return paths

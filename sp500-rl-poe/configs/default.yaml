@@ -7,9 +7,13 @@ paths:
   raw_dir: data/raw
   processed_dir: data/processed
   results_dir: results
-  # AB_finRL WRDS extract — drop the two CSVs here (gitignored).
+  # AB_finRL WRDS extract — drop the CSVs here (gitignored).
   wrds_tickers: data/raw/wrds_tickers.csv
   wrds_processed: data/raw/wrds_processed.csv
+  # Optional copy of the 10 names selected in AB_finRL (gitignored). When
+  # missing, YAML ``universe.ab_finrl_tickers`` / configs/ab_finrl_tickers.csv
+  # is used. A ``selected`` flag on wrds_tickers also overrides YAML.
+  ab_finrl_tickers: data/raw/ab_finrl_tickers.csv
 
 dates:
   # Inclusive calendar bounds for the raw extract (includes indicator warm-up).
@@ -21,10 +25,22 @@ dates:
   test_end: "2023-12-29"
 
 universe:
-  # sandbox | full_window | top_n | wrds_tickers
+  # sandbox | ab_finrl | full_window | top_n | wrds_tickers
   # wrds_tickers = names in wrds_tickers.csv ∩ prices, then full-window survivors.
+  # ab_finrl = the 10 names selected in AB_finRL (sidecar CSV, selected flag, or list below).
   rule: sandbox
   sandbox_tickers:
+    - AAPL
+    - MSFT
+    - JNJ
+    - JPM
+    - XOM
+    - PG
+    - HD
+    - UNH
+    - CAT
+    - DIS
+  ab_finrl_tickers:
     - AAPL
     - MSFT
     - JNJ

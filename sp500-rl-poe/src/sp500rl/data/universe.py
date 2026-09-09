@@ -7,7 +7,11 @@ survivorship-biased except the explicit sandbox list. Report the bias.
 Rules (config ``universe.rule``)
 --------------------------------
 sandbox
-    Hand-picked liquid names across sectors.
+    Hand-picked liquid names across sectors (``universe.sandbox_tickers``).
+ab_finrl
+    The 10 names selected in AB_finRL. Resolution order: sidecar CSV
+    (``paths.ab_finrl_tickers``), a ``selected`` flag on ``wrds_tickers``,
+    then ``universe.ab_finrl_tickers``.
 full_window
     Tickers present on **every** date in ``[start, end]``.
 top_n
@@ -29,11 +33,13 @@ The same columns, filtered to the chosen tickers. Shape ``(M, >=7)``, ``M <= N``
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
-DEFAULT_SANDBOX_TICKERS: tuple[str, ...] = (
+# 10-name sandbox selected in AB_finRL (liquid names across GICS sectors).
+AB_FINRL_TICKERS: tuple[str, ...] = (
     "AAPL",
     "MSFT",
     "JNJ",
@@ -45,6 +51,7 @@ DEFAULT_SANDBOX_TICKERS: tuple[str, ...] = (
     "CAT",
     "DIS",
 )
+DEFAULT_SANDBOX_TICKERS: tuple[str, ...] = AB_FINRL_TICKERS
 
 
 def _window(df: pd.DataFrame, start: str | None, end: str | None) -> pd.DataFrame:
@@ -63,7 +70,62 @@ def sandbox_tickers(cfg: dict[str, Any] | None = None) -> list[str]:
         return list(DEFAULT_SANDBOX_TICKERS)
     uni = cfg.get("universe", cfg)
     tickers = uni.get("sandbox_tickers", DEFAULT_SANDBOX_TICKERS)
-    return [str(t) for t in tickers]
+    return [str(t).upper() for t in tickers]
+
+
+def _resolve_path(rel: str | Path | None) -> Path | None:
+    if not rel or not isinstance(rel, (str, Path)):
+        return None
+    path = Path(rel)
+    if not path.is_absolute():
+        from sp500rl.config import project_root
+
+        path = project_root() / path
+    return path
+
+
+def ab_finrl_tickers(cfg: dict[str, Any] | None = None) -> list[str]:
+    """Return the 10 tickers selected in AB_finRL.
+
+    Resolution order
+    ----------------
+    1. Sidecar CSV at ``paths.ab_finrl_tickers`` (or ``universe.ab_finrl_tickers_file``)
+       when the file exists.
+    2. Rows flagged ``selected`` (or an alias) in ``wrds_tickers.csv``.
+    3. ``universe.ab_finrl_tickers`` in the YAML config.
+    4. :data:`AB_FINRL_TICKERS`.
+    """
+
+    from sp500rl.data.ab_finrl import flagged_tickers, load_ticker_list_file
+
+    if cfg is None:
+        return list(AB_FINRL_TICKERS)
+
+    uni = cfg.get("universe", {})
+    paths = cfg.get("paths", {})
+
+    sidecar = _resolve_path(uni.get("ab_finrl_tickers_file") or paths.get("ab_finrl_tickers"))
+    if sidecar is not None and sidecar.exists():
+        names = load_ticker_list_file(sidecar)
+        if names:
+            return [str(t).upper() for t in names]
+
+    wrds_path = _resolve_path(paths.get("wrds_tickers", "data/raw/wrds_tickers.csv"))
+    if wrds_path is not None and wrds_path.exists():
+        flagged = flagged_tickers(wrds_path)
+        if flagged:
+            return [str(t).upper() for t in flagged]
+
+    yaml_list = uni.get("ab_finrl_tickers")
+    if yaml_list and not isinstance(yaml_list, (str, Path)):
+        return [str(t).upper() for t in yaml_list]
+
+    bundled = _resolve_path("configs/ab_finrl_tickers.csv")
+    if bundled is not None and bundled.exists():
+        names = load_ticker_list_file(bundled)
+        if names:
+            return [str(t).upper() for t in names]
+    return list(AB_FINRL_TICKERS)
 
 
 def select_full_window(df: pd.DataFrame) -> list[str]:
@@ -150,6 +212,8 @@ def select_universe(
 
     if rule == "sandbox":
         tickers = sandbox_tickers(cfg)
+    elif rule in {"ab_finrl", "ab-finrl", "ab_sandbox"}:
+        tickers = ab_finrl_tickers(cfg)
     elif rule in {"full_window", "full-window", "survivors"}:
         tickers = select_full_window(scoped)
     elif rule in {"top_n", "topn", "top-n"}:
@@ -157,18 +221,15 @@ def select_universe(
         metric = str(uni.get("top_n_metric", "market_cap"))
         asof = dates.get("train_start", scoped["date"].min())
         tickers = select_top_n(scoped, n=n, asof=asof, metric=metric)
-    elif rule in {"wrds_tickers", "wrds-tickers", "ab_finrl"}:
-        from pathlib import Path
-
-        from sp500rl.config import project_root
+    elif rule in {"wrds_tickers", "wrds-tickers"}:
         from sp500rl.data.ab_finrl import listed_tickers
 
         tickers_path = uni.get("tickers_file") or cfg.get("paths", {}).get(
             "wrds_tickers", "data/raw/wrds_tickers.csv"
         )
-        path = Path(tickers_path)
-        if not path.is_absolute():
-            path = project_root() / path
+        path = _resolve_path(tickers_path)
+        if path is None:
+            raise ValueError("wrds_tickers rule needs paths.wrds_tickers")
         listed = set(listed_tickers(path))
         in_frame = set(scoped["tic"].astype(str).str.upper().unique())
         survivors = scoped.loc[scoped["tic"].astype(str).str.upper().isin(listed & in_frame)]
@@ -179,9 +240,9 @@ def select_universe(
     tickers_u = {t.upper() for t in tickers}
     out = df.loc[df["tic"].astype(str).str.upper().isin(tickers_u)].copy()
     missing = tickers_u - set(out["tic"].astype(str).str.upper().unique())
-    if missing and rule == "sandbox":
+    if missing and rule in {"sandbox", "ab_finrl", "ab-finrl", "ab_sandbox"}:
         raise ValueError(
-            f"Sandbox tickers missing from the input file: {sorted(missing)}"
+            f"Universe {rule!r} tickers missing from the input file: {sorted(missing)}"
         )
     if out.empty:
         raise ValueError(f"Universe rule {rule!r} selected no tickers.")
@@ -191,4 +252,4 @@ def select_universe(
 def list_rules() -> tuple[str, ...]:
     """Config names accepted by :func:`select_universe`."""
 
-    return ("sandbox", "full_window", "top_n", "wrds_tickers")
+    return ("sandbox", "ab_finrl", "full_window", "top_n", "wrds_tickers")

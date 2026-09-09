@@ -114,6 +114,7 @@ print("Yahoo-format path matches canonical ticker set.")
         md("## Native AB_finRL extract (`wrds_tickers` + `wrds_processed`)"),
         code("""\
 from sp500rl.data.ab_finrl import load_ab_extract, load_wrds_tickers
+from sp500rl.data.universe import ab_finrl_tickers
 
 tickers_path = raw_dir / "wrds_tickers.csv"
 processed_path = raw_dir / "wrds_processed.csv"
@@ -121,18 +122,19 @@ if not tickers_path.exists() or not processed_path.exists():
     write_synthetic(raw_dir, start=CFG["dates"]["start"], end=CFG["dates"]["end"], seed=SEED)
     print("wrote AB-shaped wrds_tickers / wrds_processed under", raw_dir)
 print("wrds_tickers exists", tickers_path.exists(), "wrds_processed exists", processed_path.exists())
+print("AB_finRL selected 10", ab_finrl_tickers(CFG))
 if tickers_path.exists():
     names = load_wrds_tickers(tickers_path)
     print("universe permnos", names["permno"].nunique(), "tickers", sorted(names["ticker"].unique())[:12], "...")
 ab_prices = load_ab_extract(processed_path, tickers_path)
 print(validate(ab_prices).summary())
 ab_panel = build_panel_from_file(
-    processed_path, cfg=CFG, universe="sandbox", tickers_path=tickers_path
+    processed_path, cfg=CFG, universe="ab_finrl", tickers_path=tickers_path
 )
 assert_balanced_panel(ab_panel, feature_cols=CFG["poe"]["features"])
 print("AB panel", ab_panel.shape, sorted(ab_panel["tic"].unique()))
-assert set(ab_panel["tic"].unique()) == set(panel["tic"].unique())
-print("AB_finRL wrds_processed path matches the canonical ticker set.")
+assert set(ab_panel["tic"].str.upper()) == set(ab_finrl_tickers(CFG))
+print("AB_finRL wrds_processed path matches the 10-name selected universe.")
 """),
     ]
     write("00_data_pipeline_check.ipynb", cells)
@@ -335,7 +337,7 @@ def nb04() -> None:
         code(PREAMBLE),
         code("""\
 # Parameters (not dates — dates stay in configs/default.yaml)
-UNIVERSE_RULE = "full_window"  # sandbox | full_window | top_n
+UNIVERSE_RULE = "full_window"  # sandbox | ab_finrl | full_window | top_n | wrds_tickers
 INPUT_CSV = ROOT / CFG["paths"]["raw_dir"] / "synthetic_canonical.csv"
 ADAPTER = CFG.get("adapter", "generic")
 

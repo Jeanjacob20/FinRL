@@ -36,7 +36,11 @@ def main() -> None:
         help="AB_finRL wrds_tickers.csv (PERMNO ↔ ticker universe).",
     )
     parser.add_argument("--adapter", default=None, help="generic | wrds_crsp | yahoo | ab_finrl")
-    parser.add_argument("--universe", default=None, help="sandbox | full_window | top_n | wrds_tickers")
+    parser.add_argument(
+        "--universe",
+        default=None,
+        help="sandbox | ab_finrl | full_window | top_n | wrds_tickers",
+    )
     parser.add_argument("--output", default=None, help="Output parquet path")
     parser.add_argument(
         "--use-synthetic",

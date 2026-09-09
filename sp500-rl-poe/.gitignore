@@ -9,6 +9,7 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!configs/ab_finrl_tickers.csv
 results/
 *.parquet
 .DS_Store
