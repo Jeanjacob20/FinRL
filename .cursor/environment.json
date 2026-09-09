@@ -1,0 +1,8 @@
+{
+  "name": "FinRL",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "user": "ubuntu",
+  "install": "pip install -r requirements.txt && pip install pyportfolioopt && pip install -e . --no-deps"
+}
