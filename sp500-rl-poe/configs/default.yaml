@@ -7,6 +7,9 @@ paths:
   raw_dir: data/raw
   processed_dir: data/processed
   results_dir: results
+  # AB_finRL WRDS extract — drop the two CSVs here (gitignored).
+  wrds_tickers: data/raw/wrds_tickers.csv
+  wrds_processed: data/raw/wrds_processed.csv
 
 dates:
   # Inclusive calendar bounds for the raw extract (includes indicator warm-up).
@@ -18,8 +21,8 @@ dates:
   test_end: "2023-12-29"
 
 universe:
-  # sandbox | full_window | top_n
-  # full_window and top_n are survivorship-biased (fixed ticker set). Report it.
+  # sandbox | full_window | top_n | wrds_tickers
+  # wrds_tickers = names in wrds_tickers.csv ∩ prices, then full-window survivors.
   rule: sandbox
   sandbox_tickers:
     - AAPL
@@ -52,7 +55,7 @@ features:
 
 column_map: null
 
-adapter: generic
+adapter: wrds_crsp
 
 poe:
   features:

@@ -13,6 +13,9 @@ full_window
 top_n
     Top-N by ``market_cap`` on the first training date if that column exists,
     else top-N by average dollar volume over the window. Held fixed after that.
+wrds_tickers
+    Names listed in the AB_finRL ``wrds_tickers`` file that also appear in the
+    price frame, then the full-window survivors. Survivorship-biased.
 
 Input
 -----
@@ -154,6 +157,22 @@ def select_universe(
         metric = str(uni.get("top_n_metric", "market_cap"))
         asof = dates.get("train_start", scoped["date"].min())
         tickers = select_top_n(scoped, n=n, asof=asof, metric=metric)
+    elif rule in {"wrds_tickers", "wrds-tickers", "ab_finrl"}:
+        from pathlib import Path
+
+        from sp500rl.config import project_root
+        from sp500rl.data.ab_finrl import listed_tickers
+
+        tickers_path = uni.get("tickers_file") or cfg.get("paths", {}).get(
+            "wrds_tickers", "data/raw/wrds_tickers.csv"
+        )
+        path = Path(tickers_path)
+        if not path.is_absolute():
+            path = project_root() / path
+        listed = set(listed_tickers(path))
+        in_frame = set(scoped["tic"].astype(str).str.upper().unique())
+        survivors = scoped.loc[scoped["tic"].astype(str).str.upper().isin(listed & in_frame)]
+        tickers = select_full_window(survivors)
     else:
         raise ValueError(f"Unknown universe rule {rule!r}")
 
@@ -172,4 +191,4 @@ def select_universe(
 def list_rules() -> tuple[str, ...]:
     """Config names accepted by :func:`select_universe`."""
 
-    return ("sandbox", "full_window", "top_n")
+    return ("sandbox", "full_window", "top_n", "wrds_tickers")

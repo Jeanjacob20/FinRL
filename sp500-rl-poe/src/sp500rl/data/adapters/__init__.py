@@ -27,6 +27,7 @@ ADAPTERS: dict[str, AdapterFn] = {
     "generic": generic_mod.to_canonical,
     "wrds_crsp": wrds_crsp_mod.to_canonical,
     "yahoo": yahoo_mod.to_canonical,
+    "ab_finrl": wrds_crsp_mod.to_canonical,
 }
 
 

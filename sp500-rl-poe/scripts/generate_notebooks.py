@@ -111,6 +111,29 @@ print("yahoo panel shape", yahoo_panel.shape, "tickers", sorted(yahoo_panel["tic
 assert set(yahoo_panel["tic"].unique()) == set(panel["tic"].unique())
 print("Yahoo-format path matches canonical ticker set.")
 """),
+        md("## Native AB_finRL extract (`wrds_tickers` + `wrds_processed`)"),
+        code("""\
+from sp500rl.data.ab_finrl import load_ab_extract, load_wrds_tickers
+
+tickers_path = raw_dir / "wrds_tickers.csv"
+processed_path = raw_dir / "wrds_processed.csv"
+if not tickers_path.exists() or not processed_path.exists():
+    write_synthetic(raw_dir, start=CFG["dates"]["start"], end=CFG["dates"]["end"], seed=SEED)
+    print("wrote AB-shaped wrds_tickers / wrds_processed under", raw_dir)
+print("wrds_tickers exists", tickers_path.exists(), "wrds_processed exists", processed_path.exists())
+if tickers_path.exists():
+    names = load_wrds_tickers(tickers_path)
+    print("universe permnos", names["permno"].nunique(), "tickers", sorted(names["ticker"].unique())[:12], "...")
+ab_prices = load_ab_extract(processed_path, tickers_path)
+print(validate(ab_prices).summary())
+ab_panel = build_panel_from_file(
+    processed_path, cfg=CFG, universe="sandbox", tickers_path=tickers_path
+)
+assert_balanced_panel(ab_panel, feature_cols=CFG["poe"]["features"])
+print("AB panel", ab_panel.shape, sorted(ab_panel["tic"].unique()))
+assert set(ab_panel["tic"].unique()) == set(panel["tic"].unique())
+print("AB_finRL wrds_processed path matches the canonical ticker set.")
+"""),
     ]
     write("00_data_pipeline_check.ipynb", cells)
 

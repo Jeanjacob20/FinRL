@@ -4,7 +4,8 @@
 Example
 -------
 python scripts/build_dataset.py --config configs/default.yaml \\
-    --input data/raw/synthetic_canonical.csv --universe sandbox
+    --input data/raw/wrds_processed.csv --tickers data/raw/wrds_tickers.csv \\
+    --universe sandbox
 """
 
 from __future__ import annotations
@@ -24,9 +25,18 @@ from sp500rl.data.pipeline import build_panel_from_file  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build a POE-ready parquet panel.")
     parser.add_argument("--config", default=str(ROOT / "configs" / "default.yaml"))
-    parser.add_argument("--input", default=None, help="CSV or parquet (canonical or source-specific)")
-    parser.add_argument("--adapter", default=None, help="generic | wrds_crsp | yahoo")
-    parser.add_argument("--universe", default=None, help="sandbox | full_window | top_n")
+    parser.add_argument(
+        "--input",
+        default=None,
+        help="Price CSV/parquet. Default: data/raw/wrds_processed.csv (AB_finRL extract).",
+    )
+    parser.add_argument(
+        "--tickers",
+        default=None,
+        help="AB_finRL wrds_tickers.csv (PERMNO ↔ ticker universe).",
+    )
+    parser.add_argument("--adapter", default=None, help="generic | wrds_crsp | yahoo | ab_finrl")
+    parser.add_argument("--universe", default=None, help="sandbox | full_window | top_n | wrds_tickers")
     parser.add_argument("--output", default=None, help="Output parquet path")
     parser.add_argument(
         "--use-synthetic",
@@ -43,6 +53,7 @@ def main() -> None:
         adapter=args.adapter,
         universe=args.universe,
         use_synthetic=use_synthetic,
+        tickers_path=args.tickers,
     )
 
     processed = project_root() / cfg.get("paths", {}).get("processed_dir", "data/processed")

@@ -121,6 +121,54 @@ def to_wide_close(df: pd.DataFrame) -> pd.DataFrame:
     return wide
 
 
+def to_wrds_processed(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonical → CRSP daily-file shaped ``wrds_processed``.
+
+    Output columns: ``date, permno, TICKER, prc, openprc, askhi, bidlo, vol,
+    cfacpr, cfacshr``. One synthetic PERMNO per ticker (10000+i). Close is
+    written as ``prc`` (positive).
+    """
+
+    tics = sorted(df["tic"].astype(str).unique())
+    permno = {tic: 10000 + i for i, tic in enumerate(tics)}
+    out = pd.DataFrame(
+        {
+            "date": df["date"].dt.strftime("%Y-%m-%d"),
+            "permno": df["tic"].astype(str).map(permno),
+            "TICKER": df["tic"],
+            "prc": df["close"],
+            "openprc": df["open"],
+            "askhi": df["high"],
+            "bidlo": df["low"],
+            "vol": df["volume"].astype(int),
+            "cfacpr": 1.0,
+            "cfacshr": 1.0,
+        }
+    )
+    return out
+
+
+def to_wrds_tickers(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonical → ``wrds_tickers`` universe (one row per ticker).
+
+    Output columns: ``permno, ticker, start, ending``.
+    """
+
+    tics = sorted(df["tic"].astype(str).unique())
+    start = df["date"].min()
+    end = df["date"].max()
+    rows = [
+        {
+            "permno": 10000 + i,
+            "ticker": tic,
+            "start": pd.Timestamp(start).strftime("%Y-%m-%d"),
+            "ending": pd.Timestamp(end).strftime("%Y-%m-%d"),
+        }
+        for i, tic in enumerate(tics)
+    ]
+    return pd.DataFrame(rows)
+
+
 def write_synthetic(
     raw_dir: str | Path,
     start: str = "2019-01-02",
@@ -139,8 +187,12 @@ def write_synthetic(
         "canonical": raw_dir / "synthetic_canonical.csv",
         "yahoo": raw_dir / "synthetic_yahoo.csv",
         "wide": raw_dir / "synthetic_wide.csv",
+        "wrds_processed": raw_dir / "wrds_processed.csv",
+        "wrds_tickers": raw_dir / "wrds_tickers.csv",
     }
     canonical.to_csv(paths["canonical"], index=False)
     to_yahoo_format(canonical).to_csv(paths["yahoo"], index=False)
     to_wide_close(canonical).to_csv(paths["wide"], index=False)
+    to_wrds_processed(canonical).to_csv(paths["wrds_processed"], index=False)
+    to_wrds_tickers(canonical).to_csv(paths["wrds_tickers"], index=False)
     return paths

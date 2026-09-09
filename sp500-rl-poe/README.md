@@ -37,27 +37,32 @@ does not pull Alpaca/train. Contract details: [`docs/poe_contract.md`](docs/poe_
 Copy [`.env.example`](.env.example) to `.env` if you want to override paths.
 There is **no live WRDS client** in this repo.
 
-## WRDS / CRSP data (external)
+## WRDS / CRSP data (AB_finRL extract)
 
-WRDS extraction lives in your existing pipeline. This repo only consumes its
-CSV:
+This repo does **not** talk to WRDS. The native input is the two CSVs from the
+AB_finRL pipeline. Column contract: [`docs/ab_finrl_contract.md`](docs/ab_finrl_contract.md).
 
-1. Export CRSP daily prices (and names) to `data/raw/crsp_daily.csv`.
-2. Typical columns handled by `--adapter wrds_crsp`: `date`/`caldt`, `permno`,
-   `TICKER`, `prc`, `openprc`, `askhi`, `bidlo`, `vol`, `cfacpr`, `cfacshr`.
-3. Build the panel:
+| File | What it is | Path |
+|---|---|---|
+| `wrds_tickers` | Full ticker / PERMNO universe (S&P 500 membership + names) | `data/raw/wrds_tickers.csv` |
+| `wrds_processed` | Daily CRSP prices after the AB extract | `data/raw/wrds_processed.csv` |
 
 ```bash
-python scripts/build_dataset.py \
-  --config configs/default.yaml \
-  --input data/raw/crsp_daily.csv \
+# After you copy the two CSVs into data/raw/:
+python scripts/build_dataset.py --config configs/default.yaml \
+  --input data/raw/wrds_processed.csv \
+  --tickers data/raw/wrds_tickers.csv \
   --adapter wrds_crsp \
   --universe sandbox
+
+# Same command with no --input: those filenames are the default.
+python scripts/build_dataset.py --config configs/default.yaml --universe sandbox
 ```
 
-No `wrds` Python package is installed here. Credentials are not read.
+The AB_finRL git repo is not cloned here (and its database was unreadable).
+Place the exported CSVs at the paths above. Real CRSP files stay gitignored.
 
-Without a real extract, generate a fake canonical file:
+Without an extract, generate **the same two filenames** in CRSP-shaped columns:
 
 ```bash
 python scripts/make_synthetic.py
@@ -65,8 +70,9 @@ python scripts/make_synthetic.py
 USE_SYNTHETIC=1 python scripts/build_dataset.py --config configs/default.yaml --universe sandbox
 ```
 
-That writes `data/processed/panel_sandbox.parquet` and also Yahoo-format and
-wide-format CSVs under `data/raw/` so notebook `00` can prove source-agnosticism.
+That also writes Yahoo-format and wide-format CSVs so notebook `00` can prove
+source-agnosticism. `universe.rule: wrds_tickers` keeps names listed in
+`wrds_tickers.csv` that survive the full window (report the survivorship bias).
 
 ## Canonical schema
 
