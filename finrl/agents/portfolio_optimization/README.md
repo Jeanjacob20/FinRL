@@ -30,6 +30,61 @@ DRLAgent.train_model(model, episodes=5)
 
 It's important that the architecture and the environment have the same `time_window` defined. By default, both of them use 50 timesteps as `time_window`. For more details about what is a time window, check this [article](https://doi.org/10.5753/bwaif.2023.231144).
 
+### Where POE changes original PPO
+
+FinRL's stock-trading PPO (`PPO` + `StockTradingEnv`, "PPO STE") is the original clipped actor-critic algorithm. The POE stack changes that behaviour in two layers, mapped onto the usual seven PPO steps:
+
+1. **Actor** — EIIE emits a deterministic softmax portfolio vector of size `n_assets + 1` (cash). There is no Gaussian sample and no stored `log_prob`.
+2. **Execute / reward** — the env rebalances to those weights (softmax if needed, optional TRF fees) and returns `ln(V_t / V_{t-1})`, not dollar PnL.
+3. **Critic** — dropped. Batch log-wealth `Σ ln(μ (W · P))` stands in for `V(s)`.
+4. **Advantage** — dropped. No `A = r + γV(s') - V(s)` and no GAE.
+5. **Actor loss** — `-mean(log(sum(W * price_rel * μ)))` instead of the clipped ratio surrogate.
+6. **Critic loss** — skipped.
+7. **On-policy discard** — sequential minibatches are reused, and the policy keeps learning at test time.
+
+A numeric walkthrough of the two-asset PPO summary (the `$100`, `a=[0.58, 0.42]`, A+4% / B−3.3% example) lives in [`ppo_ste_vs_poe.py`](ppo_ste_vs_poe.py) and can be printed with:
+
+```bash
+python examples/ppo_ste_vs_poe_walkthrough.py
+```
+
+That script also shows *PPO-on-POE*: original PPO formulas fed only POE's action and log-return. The advantage already diverges from the summary's `A = 0.87` before Jiang PG removes steps 3–7.
+
+### Keeping the PPO steps on POE
+
+To keep the original seven PPO steps and only change what POE actually requires, use the `"ppo"` agent in this package. It still samples a Gaussian, stores `log_prob`, runs a critic, GAE, the clipped surrogate, critic MSE, and on-policy discard. The POE adapters are:
+
+* flatten `(features, tickers, time_window)` and concatenate the last weights
+* softmax the sampled logits into a cash + assets vector (action dim `n+1`)
+* feed POE's `ln(V_t / V_{t-1})` into GAE so the critic lives in log-return units
+
+```python
+from finrl.agents.portfolio_optimization.models import DRLAgent
+
+model_kwargs = {
+    "lr": 3e-4,
+    "n_steps": 128,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_range": 0.2,  # ratio clip to [0.8, 1.2], same as the summary
+}
+
+policy_kwargs = {"hidden_sizes": (64, 64)}
+
+model = DRLAgent(train_env).get_model("ppo", model_kwargs, policy_kwargs)
+DRLAgent.train_model(model, episodes=5)
+```
+
+The 10-ticker Brazilian portfolio from `FinRL_PortfolioOptimizationEnv_Demo.ipynb` is wired to this PPO agent in:
+
+```bash
+python examples/ppo_poe_10ticker_sandbox.py --episodes 40
+```
+
+and in the notebook `examples/FinRL_PortfolioOptimizationEnv_PPO_Demo.ipynb`.
+
+Do not pass `"pg"` / EIIE if you want PPO: that path replaces steps 3–7 with Jiang log-wealth gradient ascent.
+
 ### Policy Gradient Algorithm
 
 The class `PolicyGradient` implements the Policy Gradient algorithm used in *Jiang et al* paper. This algorithm is inspired by DDPG (deep deterministic policy gradient), but there are a couple of differences:

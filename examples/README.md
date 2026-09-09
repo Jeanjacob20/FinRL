@@ -54,3 +54,34 @@ python examples/FinRL_StockTrading_2026_3_Backtest.py
 ```
 
 This script loads the trained agents, runs them on the trading data, and compares their performance against two baselines: Mean Variance Optimization (MVO) and the DJIA index. Results are printed to the console and a plot is saved as `backtest_result.png`.
+
+### PPO STE vs PPO POE
+
+The stock-trading tutorial above is original PPO on `StockTradingEnv` (PPO STE). To see where `PortfolioOptimizationEnv` (POE) changes that algorithm — action simplex, log-return reward, and Jiang PG dropping critic / advantage / clipping — run:
+
+```bash
+python examples/ppo_ste_vs_poe_walkthrough.py
+```
+
+The walkthrough replays the two-asset PPO asset-allocation summary (`$100`, weights `[0.58, 0.42]`, A +4% / B −3.3%) under original PPO, PPO STE, and PPO POE.
+
+To **keep** those PPO steps on `PortfolioOptimizationEnv` (softmax weights, log-return reward, critic + GAE + clip), train:
+
+```python
+from finrl.agents.portfolio_optimization.models import DRLAgent
+
+model = DRLAgent(train_env).get_model(
+    "ppo",
+    model_kwargs={"n_steps": 128, "clip_range": 0.2, "gamma": 0.99},
+    policy_kwargs={"hidden_sizes": (64, 64)},
+)
+DRLAgent.train_model(model, episodes=5)
+```
+
+The 10-ticker Brazilian portfolio from `FinRL_PortfolioOptimizationEnv_Demo.ipynb` is wired to this PPO agent in:
+
+```bash
+python examples/ppo_poe_10ticker_sandbox.py --episodes 40
+```
+
+and in the notebook `examples/FinRL_PortfolioOptimizationEnv_PPO_Demo.ipynb`.

@@ -225,6 +225,12 @@ class PolicyGradient:
 
         Args:
             test: If true, it uses the test dataloader and policy.
+
+        Note:
+            This update is the main POE break from original PPO (steps 3–7 of
+            the actor-critic loop). There is no critic, advantage, likelihood
+            ratio, or clipping; see
+            ``finrl.agents.portfolio_optimization.ppo_ste_vs_poe``.
         """
         # get batch data from dataloader
         obs, last_actions, price_variations, trf_mu = (
