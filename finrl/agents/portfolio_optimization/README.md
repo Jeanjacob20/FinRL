@@ -78,7 +78,7 @@ DRLAgent.train_model(model, episodes=5)
 The 10-ticker Brazilian portfolio from `FinRL_PortfolioOptimizationEnv_Demo.ipynb` is wired to this PPO agent in:
 
 ```bash
-python examples/ppo_poe_10ticker_sandbox.py --episodes 3
+python examples/ppo_poe_10ticker_sandbox.py --episodes 40
 ```
 
 and in the notebook `examples/FinRL_PortfolioOptimizationEnv_PPO_Demo.ipynb`.

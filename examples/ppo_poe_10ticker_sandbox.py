@@ -4,8 +4,7 @@ Mirrors ``examples/FinRL_PortfolioOptimizationEnv_Demo.ipynb`` (TOP_BRL,
 train 2011–2019, test 2020/2021/2022) but trains the PPO agent that keeps
 the original seven PPO steps instead of Jiang policy gradient.
 
-This is a sandbox: the original notebook trains EIIE for 40 episodes.
-Default here is 3 episodes so the run finishes in this environment.
+Matches the original EIIE demo: 40 training episodes on TOP_BRL.
 """
 
 from __future__ import annotations
@@ -186,7 +185,7 @@ def scale_by_ticker(df: pd.DataFrame) -> pd.DataFrame:
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--episodes", type=int, default=3)
+    parser.add_argument("--episodes", type=int, default=40)
     parser.add_argument("--n-steps", type=int, default=128)
     parser.add_argument(
         "--output-dir",
